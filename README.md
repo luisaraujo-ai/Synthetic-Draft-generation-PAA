@@ -143,3 +143,100 @@ This is a local scheduling cap with conservative estimates, **not a provider-enf
 SDK retries, and usage lost during interruption can differ from the reserved amounts. Use provider/account-side
 spending controls too if an exact billing ceiling is essential. The runner does not terminate paid calls merely
 because a completed call reports more usage than estimated.
+
+## Publish reviewed tasks to Google Drive / Sheets
+
+`publish_drive.py` is a separate post-processing step. It does not run generation,
+Stage 1, or novelty calls, and does not interfere with an active generation run.
+It publishes only Stage 1 `advance` tasks with a matching `draft_digest` and a
+current novelty approval. Stage 1 rank is an idea-value rank, not measured model
+difficulty; feasibility text is a judge assessment, not a passing reference claim.
+
+Install the optional client dependency:
+
+```bash
+uv sync --extra publish
+```
+
+Authenticate locally using Google Application Default Credentials (for example
+user OAuth ADC with Drive and Sheets scopes), or pass `--credentials PATH` to an
+OAuth authorized-user JSON file. `GOOGLE_APPLICATION_CREDENTIALS` can instead
+point to a service-account credential file. Keep credential files outside the
+repository. Enable Drive API and Sheets API for the credential project. The
+identity must have edit access to both destinations. A service account generally
+needs a Shared Drive destination or domain delegation: ordinary shared My Drive
+folders do not provide it personal file-storage quota. User OAuth is the simplest
+option for a personal Drive. The ChatGPT connector's login is not local pipeline
+authentication. Existing `SSL_CERT_FILE` settings also apply to the requests client.
+
+For the later batch novelty/NMS pass, save its selection as JSON:
+
+```json
+{
+  "selected": ["02-example-task"],
+  "draft_digests": {"02-example-task": "SHA256_OF_CURRENT_DRAFT"}
+}
+```
+
+These digests use `evidence.draft_digest(meta['draft'])`; the novelty analysis must
+write them when it makes the selection. A selected ID is a task folder basename.
+Alternatively a task's `novelty.json` can contain `verdict: "distinct"` and the
+current `draft_digest`. Legacy/deferred novelty records without a digest require
+batch selection. The publisher does not manufacture novelty approval.
+
+Preview locally (no credentials or API calls):
+
+```bash
+.venv/bin/python publish_drive.py runs/YOUR_RUN --selection selection.json
+```
+
+Publish using the default destination folder/spreadsheet supplied in this session:
+
+```bash
+SSL_CERT_FILE=/tmp/taskgen-ca.pem .venv/bin/python publish_drive.py runs/YOUR_RUN \
+  --selection selection.json --apply
+```
+
+Use `--folder ID --spreadsheet ID --tab TITLE` for other destinations. The default
+worksheet is `sheetId=0`. An existing nonempty sheet must have exactly the expected
+headers; otherwise publishing stops before uploads. Use a dedicated empty tab to
+preserve existing data. Headers are: Task ID, Task, Description, Domain, Stage 1,
+Feasibility, Difficulty / value, Main concern, Novelty, Task folder. Strings are
+written with RAW semantics to avoid interpreting task text as spreadsheet formulas.
+
+The uploader preserves the task directory structure for instructions, handbook,
+inputs and reviews. It uploads neither logs nor credentials nor arbitrary working
+files. Existing tagged task folders/files are updated, and spreadsheet rows are
+upserted by run/task ID. Drive application properties provide recovery even when
+an upload succeeded before the process died. Progress is recorded in the run's
+`publication.json`; rerun the same command after failures. Task content changes
+require current reviews but reuse the same destination folder and row. Removed
+assets are not deleted remotely; use a new task ID for a separately versioned
+release. Run one publisher per checkout; simultaneous publishers from separate
+machines targeting the same sheet are not supported. Transient read/update errors
+retry with backoff; ambiguous create failures stop for a safe rerun.
+
+No live Google upload has been tested yet. Destination access and local credentials
+must be established before the first `--apply`; the connected account previously
+could read the folder but could not access the specified spreadsheet.
+
+## Private Vercel task gallery
+
+A standalone alternative to Google Drive/Sheets is in [`task-gallery/`](task-gallery/README.md).
+It uses a server-checked shared password and signed, eight-hour session cookies.
+Task pages, search results and ZIP downloads require access; content is never served
+from a public static folder. This is a shared-password gate, not WebAuthn passkeys.
+
+After Stage 1 and batch novelty, export the selected snapshot:
+
+```bash
+.venv/bin/python export_gallery.py \
+  runs/20261023-162428-run \
+  runs/20261023-183125-run \
+  runs/20261024-102325-parallel-0ff97d
+```
+
+Commit `task-gallery/gallery_data/`, import the repository in Vercel with Root
+Directory **task-gallery**, and set `GALLERY_PASSWORD` and `GALLERY_SESSION_SECRET`
+in Vercel's environment settings. See the gallery README for setup, local preview,
+password rotation and validation details. No Google credentials are involved.

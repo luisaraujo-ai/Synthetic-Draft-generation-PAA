@@ -2,3 +2,14 @@
 runs/
 __pycache__/
 uv.lock
+*.log
+.publish-drive.lock
+domains/*/.parallel.lock
+domains/*/ledger.json
+.google-credentials/
+.batch-novelty.lock
+.gallery-export.lock
+.vercel/
+.env
+.env.*
+!.env.example

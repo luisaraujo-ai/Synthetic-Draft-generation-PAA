@@ -27,8 +27,11 @@ class Gallery(unittest.TestCase):
         atomic(data/'catalog.json',{'tasks':[task]});(data/'abc.zip').write_bytes(b'PK-test')
         self.env=patch.dict(os.environ,{'GALLERY_PASSWORD':'a-long-shared-test-password'},clear=True);self.env.start();self.addCleanup(self.env.stop)
         self.path=patch.object(web,'ROOT',self.root);self.path.start();self.addCleanup(self.path.stop)
-    def request(self,path='/',method='GET',body='',cookie='',origin='https://example.test'):
-        raw=f'{method} {path} HTTP/1.0\r\nHost: example.test\r\nOrigin: {origin}\r\nCookie: {cookie}\r\nContent-Length: {len(body.encode())}\r\n\r\n{body}'
+    def request(self,path='/',method='GET',body='',cookie='',origin='https://example.test',csrf=True,host='example.test'):
+        if method=='POST' and csrf:
+            cfg=web.config();body+='&csrf='+web.session(cfg[0],cfg[1]+':csrf')
+        site='cross-site' if origin=='https://evil.test' else 'same-origin'
+        raw=f'{method} {path} HTTP/1.0\r\nHost: {host}\r\nSec-Fetch-Site: {site}\r\nOrigin: {origin}\r\nCookie: {cookie}\r\nContent-Length: {len(body.encode())}\r\n\r\n{body}'
         sock=Socket(raw.encode());web.handler(sock,('127.0.0.1',1000),object())
         headers,content=sock.output.split(b'\r\n\r\n',1)
         return headers.decode(),content
@@ -52,6 +55,9 @@ class Gallery(unittest.TestCase):
         with patch.object(web.time,'sleep'):
             self.assertIn('401',self.request('/login','POST','password=wrong')[0])
         self.assertIn('403',self.request('/login','POST','password=a-long-shared-test-password',origin='https://evil.test')[0])
+    def test_proxy_and_null_origin_with_csrf(self):
+        self.assertIn('303',self.request('/login','POST','password=a-long-shared-test-password',origin='null',host='internal.vercel')[0])
+        self.assertIn('403',self.request('/login','POST','password=a-long-shared-test-password',csrf=False)[0])
     def test_expiry_tampering_rotation(self):
         password,secret=web.config();token=web.session(password,secret,now=100)
         self.assertTrue(web.authorized('gallery_session='+token,password,secret,now=101))

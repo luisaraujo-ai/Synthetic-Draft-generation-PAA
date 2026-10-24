@@ -40,7 +40,9 @@ def authorized(cookie,password,secret,now=None):
     except (ValueError,KeyError):return False
 
 def page(title,body,logged=False):
-    logout='<form class="logout" action="/logout" method="post"><button>Sign out</button></form>' if logged else ''
+    cfg=config() if logged else ('','')
+    csrf='<input type="hidden" name="csrf" value="'+session(cfg[0],cfg[1]+':csrf')+'">'
+    logout='<form class="logout" action="/logout" method="post">'+csrf+'<button>Sign out</button></form>' if logged else ''
     return ('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             '<title>'+esc(title)+' · Task Library</title><style>'+CSS+'</style><header>'+logout+
             '<a href="/">FORGE / TASK LIBRARY</a></header><main>'+body+
@@ -65,17 +67,20 @@ class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         cfg=self.setup_config()
         if cfg is None:return
-        # Reject cross-site forms, including login CSRF. SameSite protects subsequent navigation.
-        origin=self.headers.get('Origin','')
-        scheme='http' if os.environ.get('GALLERY_LOCAL_HTTP')=='1' else 'https'
-        if origin!=scheme+'://'+self.headers.get('Host',''):
-            return self.send(403,page('Forbidden','<h1>Invalid request origin.</h1>'))
-        if self.path=='/logout':return self.send(303,headers={'Location':'/login','Set-Cookie':self.secure_cookie('',0)})
-        if self.path!='/login':return self.send(404)
+        # A signed form token works across Vercel proxy hosts and browsers that
+        # send Origin: null under a strict referrer policy. Never trust forwarded hosts.
+        if self.headers.get('Sec-Fetch-Site')=='cross-site':
+            return self.send(403,page('Forbidden','<h1>Please open the login page again.</h1>'))
+        if self.path not in ('/login','/logout'):return self.send(404)
         try:length=int(self.headers.get('Content-Length','0'))
         except ValueError:return self.send(400)
         if not 0<length<=4096:return self.send(400)
-        submitted=parse_qs(self.rfile.read(length).decode(errors='replace')).get('password',[''])[0]
+        fields=parse_qs(self.rfile.read(length).decode(errors='replace'))
+        token=fields.get('csrf',[''])[0]
+        if not authorized('gallery_session='+token,cfg[0],cfg[1]+':csrf'):
+            return self.send(403,page('Forbidden','<h1>Please reload the login page and try again.</h1>'))
+        if self.path=='/logout':return self.send(303,headers={'Location':'/login','Set-Cookie':self.secure_cookie('',0)})
+        submitted=fields.get('password',[''])[0]
         # Fixed-cost digest comparison, independent of password length and prefix.
         expected=hashlib.scrypt(cfg[0].encode(),salt=b'forge-gallery-login-v1',n=16384,r=8,p=1)
         actual=hashlib.scrypt(submitted.encode(),salt=b'forge-gallery-login-v1',n=16384,r=8,p=1)
@@ -84,7 +89,9 @@ class handler(BaseHTTPRequestHandler):
             return self.send(401,self.login('Incorrect access password.'))
         return self.send(303,headers={'Location':'/','Set-Cookie':self.secure_cookie(session(*cfg))})
     def login(self,error=''):
-        return page('Welcome','<section class="panel narrow"><span class="tag">Private collection</span><h1>Engineering worth exploring.</h1><p class="muted">Enter your shared access password to browse the task library.</p><p>'+esc(error)+'</p><form method="post" action="/login"><label>Access password</label><input aria-label="Access password" type="password" name="password" autocomplete="current-password" required maxlength="1024" style="width:100%"><p><button>Open library →</button></p></form></section>')
+        cfg=config()
+        csrf=session(cfg[0],cfg[1]+':csrf')
+        return page('Welcome','<section class="panel narrow"><span class="tag">Private collection</span><h1>Engineering worth exploring.</h1><p class="muted">Enter your shared access password to browse the task library.</p><p>'+esc(error)+'</p><form method="post" action="/login"><input type="hidden" name="csrf" value="'+csrf+'"><label>Access password</label><input aria-label="Access password" type="password" name="password" autocomplete="current-password" required maxlength="1024" style="width:100%"><p><button>Open library →</button></p></form></section>')
     def do_GET(self):
         cfg=self.setup_config()
         if cfg is None:return

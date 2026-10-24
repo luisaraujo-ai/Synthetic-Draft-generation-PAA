@@ -69,6 +69,28 @@ class Gallery(unittest.TestCase):
         self.assertIn('200',headers);self.assertIn(b'&lt;script&gt;',body);self.assertNotIn(b'<script>',body)
         self.assertIn('Max-Age=0',self.request('/logout','POST',cookie=self.cookie())[0])
         with patch.dict(os.environ,{'GALLERY_PASSWORD':''}):self.assertIn('503',self.request('/download/abc')[0])
+    def test_browse_searches_assessments_and_resets_empty_results(self):
+        _,body=self.request('/?q=corners',cookie=self.cookie())
+        self.assertIn(b'1 of 1 tasks',body)
+        self.assertIn(b'Assessment at a glance',body)
+        self.assertNotIn(b'Value 8/10',body)
+        self.assertIn(b'&lt;script&gt;',body)
+        _,body=self.request('/?domain=Other',cookie=self.cookie())
+        self.assertIn(b'0 of 1 tasks',body)
+        self.assertIn(b'Show all tasks',body)
+
+    def test_alphabetical_order_and_detail_navigation(self):
+        path=self.root/'gallery_data/catalog.json'
+        data=json.loads(path.read_text());first=data['tasks'][0]
+        first['title']='Zebra';data['tasks'].append({**first,'title':'Alpha','key':'def','id':'run/other','rank':7})
+        atomic(path,data)
+        _,body=self.request('/',cookie=self.cookie())
+        self.assertLess(body.index(b'Alpha'),body.index(b'Zebra'))
+        _,body=self.request('/task/abc',cookie=self.cookie())
+        for anchor in ('assessment','brief','handbook','review'):
+            self.assertIn(('id="'+anchor+'"').encode(),body)
+        self.assertIn(b'/download/abc',body)
+
     def test_export_gating_and_zip(self):
         run=self.root/'run';folder=run/'tasks/a';draft={'title':'Example','instruction_md':'Design.'};digest=draft_digest(draft)
         atomic(folder/'draft.json',{'draft':draft})

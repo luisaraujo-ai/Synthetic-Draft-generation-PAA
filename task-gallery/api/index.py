@@ -14,6 +14,10 @@ import time
 ROOT=Path(__file__).resolve().parents[1]
 CSS='''*{box-sizing:border-box}body{margin:0;background:#f5f6f2;color:#1c302d;font:16px/1.6 system-ui,sans-serif}header{background:#143c35;color:#fff;padding:30px max(5vw,20px)}header a{color:inherit}main{max-width:1180px;margin:40px auto;padding:0 24px}h1{font-size:clamp(30px,4vw,48px);line-height:1.15;letter-spacing:-1.5px}h2{line-height:1.3}a{color:#17674f;text-decoration:none}a:hover{text-decoration:underline}.muted{color:#61716b}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:20px}.card,.panel{background:white;border:1px solid #d9e1d9;border-radius:14px;padding:24px}.card{display:flex;flex-direction:column}.card h2{font-size:21px}.card p{flex:1}.tag{font-size:12px;letter-spacing:.04em;text-transform:uppercase;background:#e6eee7;padding:5px 9px;border-radius:5px;display:inline-block;margin-right:5px}input,select,button{font:inherit;border:1px solid #b9cbc2;border-radius:7px;padding:10px 14px}button,.button{background:#164f40;color:white;border:0;padding:11px 18px;border-radius:7px;display:inline-block;cursor:pointer}.toolbar{display:flex;gap:12px;flex-wrap:wrap;margin:28px 0}.toolbar input{flex:1;min-width:200px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 ui-monospace,monospace}.narrow{max-width:440px;margin:10vh auto}details{margin:20px 0}summary{cursor:pointer;font-weight:600}.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;margin:24px 0}footer{padding:30px 0;color:#61716b;font-size:13px}.logout{float:right}.logout button{background:transparent;color:white;border:1px solid #7b9d8d}label{display:block;margin:12px 0}'''
 
+CSS += """
+body{background:#f3f5f7;color:#24332f}header{padding:20px max(5vw,20px);background:#163c35}header>a{font-weight:750;letter-spacing:.12em;font-size:12px}main{max-width:1280px}h1{max-width:950px}h2{letter-spacing:-.4px}.intro{max-width:730px;font-size:18px}.grid{grid-template-columns:repeat(auto-fit,minmax(320px,1fr));align-items:start}.card{padding:26px;box-shadow:0 3px 12px #143c3505}.card h2{margin:16px 0 12px}.card h2 a{color:#203d34}.card:hover{border-color:#8da99a}.card p{margin-top:0}.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:#557568}.tag{font-size:11px;letter-spacing:.02em}.preview{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.card details{border-top:1px solid #e5eae7;padding-top:14px;font-size:14px;margin:16px 0}.card details p{margin:12px 0}.card-actions{display:flex;justify-content:space-between;gap:12px;font-size:14px;font-weight:600;margin-top:18px}.toolbar{padding:18px;background:white;border:1px solid #d9e1d9;border-radius:12px;align-items:end}.toolbar label{margin:0;flex:1;min-width:180px;font-size:12px;font-weight:650;color:#61716b}.toolbar input,.toolbar select{display:block;width:100%;margin-top:5px;min-width:0;background:#fff;color:#24332f}.results{display:flex;justify-content:space-between;align-items:center;margin:22px 0}.section-nav{display:flex;flex-wrap:wrap;gap:20px;padding:16px 0;margin:24px 0;border-top:1px solid #d9e1d9;border-bottom:1px solid #d9e1d9}.notice{border-left:3px solid #a8b8ac;padding:12px 18px;background:#eaf0ec;font-size:14px}.meta .panel{padding:22px}.meta strong{font-size:13px;color:#557568}.meta p{font-size:15px}.document{font:16px/1.8 system-ui,sans-serif;white-space:pre-wrap;overflow-wrap:anywhere}.empty{text-align:center;padding:50px}a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #bf8625;outline-offset:4px}section,details{scroll-margin-top:20px}@media(max-width:600px){main{padding:0 16px;margin-top:28px}.grid{grid-template-columns:1fr}.toolbar{display:block}.toolbar label{margin-bottom:14px}.toolbar button{width:100%}.meta{grid-template-columns:1fr}.logout button{padding:7px 12px}.card{padding:20px}h1{letter-spacing:-1px}}
+"""
+
 def esc(value): return html.escape(str(value),quote=True)
 def config():
     password=os.environ.get('GALLERY_PASSWORD','')
@@ -104,13 +108,21 @@ class handler(BaseHTTPRequestHandler):
         except (FileNotFoundError,ValueError):return self.send(503,page('Unavailable','<h1>The task catalog is unavailable.</h1>'))
         tasks=catalog['tasks']
         if url.path=='/':
-            query=parse_qs(url.query);q=query.get('q',[''])[0];domain=query.get('domain',[''])[0]
-            visible=[t for t in tasks if (not domain or t['domain']==domain) and q.lower() in (t['title']+' '+t['description']+' '+t['domain']).lower()]
+            query=parse_qs(url.query);q=query.get('q',[''])[0].strip();domain=query.get('domain',[''])[0]
+            sort=query.get('sort',['title'])[0]
+            visible=[t for t in tasks if (not domain or t['domain']==domain) and q.casefold() in ' '.join(str(t.get(k,'')) for k in ('title','description','domain','id','feasibility','difficulty','concern')).casefold()]
+            visible.sort(key=lambda t: ((t['domain'].casefold(),t['title'].casefold()) if sort=='domain' else (t['title'].casefold(),t['id'])))
             options='<option value="">Every domain</option>'+''.join('<option '+('selected ' if d==domain else '')+'value="'+esc(d)+'">'+esc(d)+'</option>' for d in sorted({t['domain'] for t in tasks}))
-            body='<span class="tag">Reviewed engineering tasks</span><h1>A library of design challenges.</h1><p class="muted">'+str(len(tasks))+' selected tasks · Briefs, engineering assessments, and downloadable assets.</p><form class="toolbar"><input name="q" placeholder="Search tasks…" value="'+esc(q)+'"><select aria-label="Domain" name="domain">'+options+'</select><button>Filter</button></form><div class="grid">'
+            sorts=''.join('<option value="'+v+'" '+('selected' if sort==v else '')+'>'+label+'</option>' for v,label in [('title','Title A–Z'),('domain','Domain, then title')])
+            body='<div class="eyebrow">Engineering task collection</div><h1>Find your next design challenge.</h1><p class="intro muted">Browse the problem, assess the trade-offs, and inspect the review before downloading.</p><form class="toolbar"><label>Search tasks and assessments<input type="search" name="q" placeholder="Try: piezo, settling, leakage…" value="'+esc(q)+'"></label><label>Domain<select name="domain">'+options+'</select></label><label>Sort by<select name="sort">'+sorts+'</select></label><button>Apply filters</button></form><div class="results"><strong>'+str(len(visible))+' of '+str(len(tasks))+' tasks</strong><a href="/">Reset filters</a></div><div class="grid">'
             for t in visible:
-                body+='<article class="card"><div><span class="tag">'+esc(t['domain'])+'</span><span class="tag">Value '+str(t['rank'])+'/10</span></div><h2><a href="/task/'+t['key']+'">'+esc(t['title'])+'</a></h2><p>'+esc(t['description'])+'</p><a href="/task/'+t['key']+'">Explore task →</a></article>'
-            body+='</div>' if visible else '</div><p>No tasks match these filters.</p>'
+                link='/task/'+quote(t['key'],safe='')
+                body+='<article class="card"><span class="tag">'+esc(t['domain'])+'</span><h2><a href="'+link+'">'+esc(t['title'])+'</a></h2><p class="preview">'+esc(t['description'])+'</p><details><summary>Assessment at a glance</summary>'
+                for label,field in [('Feasibility','feasibility'),('Difficulty','difficulty'),('Main concern','concern')]:
+                    body+='<p><strong>'+label+'</strong><br>'+esc(t.get(field,'Not reported'))+'</p>'
+                body+='</details><div class="card-actions"><a href="'+link+'">Read task →</a><a href="/download/'+quote(t['key'],safe='')+'" aria-label="Download '+esc(t['title'])+'">Download ZIP ↓</a></div></article>'
+            body+='</div>'
+            if not visible:body+='<section class="panel empty"><h2>No matching tasks</h2><p>Try a broader term or choose every domain.</p><a href="/">Show all tasks →</a></section>'
             return self.send(200,page('Library',body,True))
         prefix,key= (url.path.rsplit('/',1) if '/' in url.path else ('',''))
         task=next((t for t in tasks if t['key']==key),None)
@@ -119,12 +131,12 @@ class handler(BaseHTTPRequestHandler):
             data=(ROOT/'gallery_data'/f'{key}.zip').read_bytes()
             return self.send(200,data,'application/zip',{'Content-Disposition':f'attachment; filename="task-{key}.zip"'})
         if prefix!='/task':return self.send(404)
-        body='<a href="/">← All tasks</a><h1>'+esc(task['title'])+'</h1><span class="tag">'+esc(task['domain'])+'</span><span class="tag">Stage 1 advance</span><p>'+esc(task['description'])+'</p><a class="button" href="/download/'+key+'">Download task ZIP ↓</a><div class="meta">'
+        body='<a href="/">← All tasks</a><h1>'+esc(task['title'])+'</h1><span class="tag">'+esc(task['domain'])+'</span><span class="tag">Stage 1 advance</span><p>'+esc(task['description'])+'</p><a class="button" href="/download/'+key+'">Download task ZIP ↓</a><nav class="section-nav" aria-label="Task sections"><a href="#assessment">Assessment</a><a href="#brief">Task brief</a><a href="#handbook">Handbook</a><a href="#review">Full review</a></nav><p class="notice">Review estimates describe the task’s potential. They do not establish a passing reference or an Astra failure rate.</p><div class="meta" id="assessment">'
         for label,value in [('Feasibility assessment',task['feasibility']),('Difficulty estimate',task['difficulty']),('Main concern',task['concern']),('Reference validation','Not independently established by Stage 1 review')]:
             body+='<section class="panel"><strong>'+label+'</strong><p>'+esc(value)+'</p></section>'
-        body+='</div><section class="panel"><h2>Task brief</h2><pre>'+esc(task['brief'])+'</pre></section>'
-        for label,value in [('Handbook',task['handbook']),('Full Stage 1 review',task['review'])]:
-            body+='<details class="panel"><summary>'+label+'</summary><pre>'+esc(value)+'</pre></details>'
+        body+='</div><section class="panel" id="brief"><h2>Task brief</h2><pre class="document">'+esc(task['brief'])+'</pre></section>'
+        for anchor,label,value in [('handbook','Handbook',task['handbook']),('review','Full Stage 1 review',task['review'])]:
+            body+='<details class="panel" id="'+anchor+'"><summary>'+label+'</summary><pre class="document">'+esc(value)+'</pre></details>'
         return self.send(200,page(task['title'],body,True))
 
 if __name__=='__main__':

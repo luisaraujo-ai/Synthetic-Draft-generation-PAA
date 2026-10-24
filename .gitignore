@@ -13,3 +13,14 @@ domains/*/ledger.json
 .env
 .env.*
 !.env.example
+
+# Local/private engineering context and task development assets
+guidelines/
+domains/
+harbor-tasks/
+experiments/
+ws_tmp/
+*.zip
+*-run/
+# Reviewed gallery downloads are intentional deployment content.
+!task-gallery/gallery_data/*.zip

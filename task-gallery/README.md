@@ -5,8 +5,8 @@ engineering review summaries and ZIP downloads. No Google login or database is n
 
 Access uses a **shared password**, not a device-bound WebAuthn passkey. Anyone with
 it can browse and download the collection. It does not provide individual accounts
-or per-person revocation. A signed cookie lasts eight hours; changing either secret
-invalidates every existing session. The password and signing secret stay server-side.
+or per-person revocation. A signed cookie lasts eight hours; changing the password
+invalidates every existing session. The password stays server-side; the cookie-signing key is derived internally.
 All routes, including direct downloads, pass through the same server handler. Responses
 are private/no-store. Task text is HTML-escaped and there are no third-party scripts.
 
@@ -35,19 +35,19 @@ The catalog is published as a snapshot; exporting again replaces its list.
 2. Import it in Vercel. Set **Root Directory** to `task-gallery`.
 3. Choose **Other** for Framework Preset. Leave Build Command and Output Directory
    at their defaults; there is no frontend compilation step.
-4. Add these Environment Variables for Production and Preview:
-   - `GALLERY_PASSWORD`: shared password, at least 16 characters; use 24+ random characters.
-   - `GALLERY_SESSION_SECRET`: independent secret, at least 32 characters.
+4. Add one Environment Variable for Production and Preview:
+   - `GALLERY_PASSWORD`: the shared access password. Use a long random password.
+   No other secret is required. An existing `GALLERY_SESSION_SECRET` can be deleted.
 5. Deploy. Share the app URL and access password separately.
 
-Generate each secret locally with:
+Optionally generate a password locally with:
 
 ```bash
 python3 -c 'import secrets; print(secrets.token_urlsafe(32))'
 ```
 
 Do not set `GALLERY_LOCAL_HTTP` on Vercel. Cookies are Secure in deployment.
-Missing/short secrets return a setup page with HTTP 503 and expose no task data.
+A missing or empty password returns a setup page with HTTP 503 and expose no task data.
 For Internet-facing deployments, enable Vercel Firewall rate limiting on POST
 `/login`; the local failure delay is not a distributed brute-force limit. Use a
 long random password. Keep the Git repository private if task content must also
@@ -56,8 +56,7 @@ be private in source control. Password protection cannot revoke already download
 ## Local preview
 
 ```bash
-export GALLERY_PASSWORD='your-shared-password-at-least-16-characters'
-export GALLERY_SESSION_SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export GALLERY_PASSWORD='your-shared-access-password'
 python3 task-gallery/api/index.py
 ```
 

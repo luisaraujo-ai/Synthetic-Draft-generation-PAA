@@ -25,7 +25,7 @@ class Gallery(unittest.TestCase):
         task={'key':'abc','id':'run/task','title':'<script>bad</script>','description':'Design','domain':'EE','rank':8,
               'feasibility':'Unverified','difficulty':'Estimate','concern':'Check corners','brief':'<img src=x>','handbook':'notes','review':'review'}
         atomic(data/'catalog.json',{'tasks':[task]});(data/'abc.zip').write_bytes(b'PK-test')
-        self.env=patch.dict(os.environ,{'GALLERY_PASSWORD':'a-long-shared-test-password','GALLERY_SESSION_SECRET':'s'*40},clear=True);self.env.start();self.addCleanup(self.env.stop)
+        self.env=patch.dict(os.environ,{'GALLERY_PASSWORD':'a-long-shared-test-password'},clear=True);self.env.start();self.addCleanup(self.env.stop)
         self.path=patch.object(web,'ROOT',self.root);self.path.start();self.addCleanup(self.path.stop)
     def request(self,path='/',method='GET',body='',cookie='',origin='https://example.test'):
         raw=f'{method} {path} HTTP/1.0\r\nHost: example.test\r\nOrigin: {origin}\r\nCookie: {cookie}\r\nContent-Length: {len(body.encode())}\r\n\r\n{body}'
@@ -33,6 +33,11 @@ class Gallery(unittest.TestCase):
         headers,content=sock.output.split(b'\r\n\r\n',1)
         return headers.decode(),content
     def cookie(self):return 'gallery_session='+web.session(*web.config())
+    def test_only_password_required_and_legacy_secret_ignored(self):
+        cfg=web.config()
+        with patch.dict(os.environ,{'GALLERY_SESSION_SECRET':'unused'}):
+            self.assertEqual(web.config(),cfg)
+        self.assertIn('200',self.request('/')[0])
     def test_protected_catalog_download_and_private_path(self):
         for path in ['/task/abc','/download/abc','/gallery_data/catalog.json','/api/index.py','/gallery_data/abc.zip']:
             headers,body=self.request(path)

@@ -17,9 +17,10 @@ CSS='''*{box-sizing:border-box}body{margin:0;background:#f5f6f2;color:#1c302d;fo
 def esc(value): return html.escape(str(value),quote=True)
 def config():
     password=os.environ.get('GALLERY_PASSWORD','')
-    secret=os.environ.get('GALLERY_SESSION_SECRET','')
-    if len(password)<16 or len(secret)<32: raise ValueError('Access configuration missing')
-    return password,secret
+    if not password: raise ValueError('GALLERY_PASSWORD is missing')
+    # Derive the internal cookie key from the password; no second setting required.
+    key=hashlib.scrypt(password.encode(),salt=b'forge-gallery-session-v2',n=16384,r=8,p=1).hex()
+    return password,key
 
 def signature(payload,password,secret):
     key=hashlib.sha256((secret+'\0'+password).encode()).digest()
@@ -57,7 +58,7 @@ class handler(BaseHTTPRequestHandler):
     def setup_config(self):
         try:return config()
         except ValueError:
-            self.send(503,page('Setup required','<h1>Access is not configured.</h1><p>Set the two gallery environment variables in Vercel, then redeploy.</p>'))
+            self.send(503,page('Setup required','<h1>Access is not configured.</h1><p>Set GALLERY_PASSWORD in Vercel for this deployment environment, then redeploy.</p>'))
     def secure_cookie(self,value,maxage=28800):
         secure='' if os.environ.get('GALLERY_LOCAL_HTTP')=='1' else '; Secure'
         return f'gallery_session={value}; Path=/; HttpOnly; SameSite=Strict; Max-Age={maxage}'+secure

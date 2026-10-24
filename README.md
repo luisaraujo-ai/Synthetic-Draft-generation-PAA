@@ -237,6 +237,6 @@ After Stage 1 and batch novelty, export the selected snapshot:
 ```
 
 Commit `task-gallery/gallery_data/`, import the repository in Vercel with Root
-Directory **task-gallery**, and set `GALLERY_PASSWORD` and `GALLERY_SESSION_SECRET`
+Directory **task-gallery**, and set only `GALLERY_PASSWORD`
 in Vercel's environment settings. See the gallery README for setup, local preview,
 password rotation and validation details. No Google credentials are involved.

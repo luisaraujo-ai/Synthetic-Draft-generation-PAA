@@ -1,0 +1,214 @@
+{
+ "domain": "electrical",
+ "entries": [
+  {
+   "id": "ELEC_CS_007",
+   "kind": "existing",
+   "status": "existing",
+   "title": "NAND4 decoder cell pin-to-pin delay equalisation via stack sizing and isolated-well body ties",
+   "summary": "Diagnose why a series-stack NAND4 with identical NMOS has unequal pin delays (body effect plus internal-node precharge state), then resize the eight widths and optionally tie NMOS bodies to source in isolated wells to meet ≤8%/7.8% pin spread, delay, input-cap, area and leakage limits across 24 PVT/load corners.",
+   "subdomain": "digital and IC cell design",
+   "descriptors": {
+    "phenomenon": "body effect and stacked-device behaviour",
+    "design_freedom": "parameter selection: architecture and interfaces fixed by a real constraint, values open",
+    "reasoning": "robustness across process, tolerance and environmental variation"
+   },
+   "structure": {
+    "physical_principle": "In a four-high NMOS series stack, upper devices see source-to-body voltage and raised thresholds (body effect), and internal nodes hold charge from prior states, so the pin nearest ground must discharge all intermediate node capacitance while the top pin finds the stack pre-discharged; for rising edges the internal-node charge and Miller/drain capacitance differ per pin. Tying body to source in an isolated well removes the Vth shift at an area cost.",
+    "governing_equations": "Vth = Vth0 + γ(√(2φF+VSB) − √(2φF)); stack discharge delay ≈ Σ R_i·C_node,i (Elmore); input cap q/VDD ∝ W_n + W_p; area = ΣW + 0.8 µm per isolated well; spread = (max−min)/min of per-pin tp.",
+    "topology": "Fixed single-stage static CMOS NAND4: four parallel PMOS pull-up, four series NMOS pull-down, fixed pin order (A at output, D at ground), no added devices; only eight widths and NMOS body connection (rail vs. isolated well to source) are free.",
+    "interfaces": "Each input driven by a minimum buffer with 3.4 fF charge budget per pin; output load 10–30 fF (20 fF nominal); fixed 7.5 µm width-equivalent slot; fixed pin order and abutment; 0.18 µm GEN180 BSIM3v3 TT/SS/FF corners.",
+    "constraint_interactions": "Tapering/upsizing the stack to equalise pin delays raises input capacitance and area against the per-pin 3.4 fF and 7.5 µm slot limits; isolated wells cut body-effect asymmetry but each costs 0.8 µm of area; FF/hot corner worsens standby leakage while SS/low-VDD worsens absolute delay, and the spread's worst corner differs from both (e.g. light load or high VDD changes the relative weight of internal-node vs. output charge).",
+    "operating_regime": "Transient switching of a 1.8 V bulk CMOS gate at 20 ns window, 0–85 °C, 1.62–1.98 V, 10–30 fF load, plus DC standby leakage with all inputs high.",
+    "reasoning_required": "Separate body effect from internal-node charge-state contribution by diagnostic simulation (bodies-to-source), reconcile test-chip Vth-vs-VSB data with model card, identify which document (datasheet characterisation footnote vs STA) is wrong, find limits of sizing-only equalisation, justify each isolated well by spread gained per area, and verify all rows across 24 corners identifying distinct worst corners for spread, delay and leakage, or quantify what constraint must relax."
+   },
+   "failure_mechanisms": [],
+   "provenance": {
+    "statement": "electrical_tasks/ELEC_CS_007 Decoder NAND4: Pin D Is Late, L0-L3 (V6: spread limit 7.8 %).md"
+   },
+   "notes": [],
+   "pass_rate": {
+    "passed": 1,
+    "trials": 1,
+    "models": [
+     "openai/gpt-5.6-sol",
+     "openai/gpt-6-astra"
+    ]
+   }
+  },
+  {
+   "id": "ELEC_CS_016",
+   "kind": "existing",
+   "status": "existing",
+   "title": "Five-input NAND row-decoder cell: equalising pin-to-pin delay against body effect and stack charge state",
+   "summary": "Diagnose why a library NAND5 shows 19–33 % pin-dependent delay (body effect vs internal-node precharge), identify the wrong document, then resize the ten devices and optionally use isolated-well NMOS bodies so the spread meets ≤8 % nominal / ≤12.8 % across 24 PVT-load corners within fixed area, pin order and input-load budgets.",
+   "subdomain": "digital and IC cell design",
+   "descriptors": {
+    "phenomenon": "body effect and stacked-device behaviour",
+    "design_freedom": "parameter selection: architecture and interfaces fixed by a real constraint, values open",
+    "reasoning": "robustness across process, tolerance and environmental variation"
+   },
+   "structure": {
+    "physical_principle": "In a five-high series NMOS stack each device's source sits above ground, so body effect raises its threshold and lowers its drive. The internal stack nodes are also either charged or discharged before the switching input toggles, depending on which input switches. Together these make the delay from the bottom input (E) differ from the top input (A) on both edges, even when drawn sizes are equal. Tying an NMOS body to its own source in an isolated well removes the body effect for that device at a fixed area cost. Pull-up delay depends on the total capacitance (output plus internal nodes) left charged in the stack.",
+    "governing_equations": "Vth = Vth0 + γ(√(2φF+VSB) − √(2φF)); alpha-power/square-law drain current per device in the stack; Elmore-type delay τ ≈ Σ R_i·C_downstream for the series chain; internal-node precharge from the history of the held-high inputs (Vnode ≈ VDD − Vth(VSB) when charged through the upper devices); spread = (max−min)/min; Cin = q/VDD; area = ΣW + 0.8 µm per isolated well.",
+    "topology": "Fixed single-stage static CMOS NAND5: five parallel PMOS pull-ups and a five-high series NMOS pull-down. Input A drives the top device and E the bottom. No added devices or stages. Open: the ten widths (L fixed at 0.18 µm, 0.01 µm grid, ≥0.22 µm) and whether each NMOS body is tied to ground or to its own source via an isolated well.",
+    "interfaces": "Driven by minimum predecode buffers with a 3.4 fF/pin input-charge budget. Drives a 10–30 fF row load, characterised at 20 fF. The cell must fit a fixed 9.4 µm width-equivalent slot and keep its pin order for row abutment. The STA timing model assumes a single delay arc for all pins with an 8 % tolerance.",
+    "constraint_interactions": "Widening the lower stack devices speeds them but adds input capacitance and area, and loads the internal nodes, which slows the upper pins. The tapered-stack sizing rule helps one edge while the rising edge stays set by internal-node charge, which sizing cannot fully remove. Isolated wells remove body effect but each costs 0.8 µm of a tight area budget. PMOS width trades rise time and input load against area. The worst corners differ by row: spread, absolute delay and leakage peak at different process, voltage, temperature and load combinations. Leakage limits bound how low the thresholds can effectively go.",
+    "operating_regime": "0.18 µm bulk CMOS at 1.8 V (1.62–1.98 V), TT/SS/FF, 0–85 °C, 10–30 fF load. One input switches at a time with the others held high, so the internal stack nodes carry the state left by previous transitions. Delays are a few hundred ps; standby leakage is in the pA range.",
+    "reasoning_required": "Measure per-pin delays and internal-node voltages. Extract Vth versus VSB from test-chip data and from the model card and compare them. Use a diagnostic run with bodies tied to sources to split the spread between body effect and stack charge state for each edge. Decide which document (datasheet footnote, STA report or library) is wrong. Find the limit of sizing alone and justify each isolated well by the spread it removes against its area. Sweep each range one at a time and run the 24 extreme corners to find the separate worst corners for spread, delay and leakage. Then either close every row at every corner or quantify the irreducible shortfall and state what must be relaxed."
+   },
+   "failure_mechanisms": [],
+   "provenance": {
+    "statement": "electrical_tasks/ELEC_CS_016_Problem_Statement.md"
+   },
+   "notes": []
+  },
+  {
+   "id": "ELEC_CS_017",
+   "kind": "existing",
+   "status": "existing",
+   "title": "AOI41 Register-File Write-Enable Cell: Equalising Pin-to-Pin Delay Across Four Series Select Inputs",
+   "summary": "Diagnose why the four select pins of a ten-transistor AOI41 cell (4-high NMOS stack, parallel PMOS with series E PMOS) have unequal delays, then resize it within a fixed area, pin order and input-load budget, optionally using isolated-well body ties, so pin-to-pin spread stays within 6 % at nominal and 6.75 % across PVT and load corners.",
+   "subdomain": "digital and IC cell design",
+   "descriptors": {
+    "phenomenon": "body effect and stacked-device behaviour",
+    "design_freedom": "configuration design: solution family fixed, arrangement and sizing open",
+    "reasoning": "robustness across process, tolerance and environmental variation"
+   },
+   "structure": {
+    "physical_principle": "In a series NMOS stack each device's source rises above the grounded body, raising its threshold through the body effect. Internal stack nodes and the PMOS node p1 hold history-dependent charge before each input switches. The pin nearest ground must discharge all upper stack capacitance, and the rising edge must charge p1 plus Y through the series E PMOS. So equal drawn widths give pin-dependent delays. Tying a device's body to its source in an isolated well removes its body effect at a fixed area cost.",
+    "governing_equations": "Vth = Vth0 + γ(√(2φF+VSB) − √(2φF)); alpha-power/square-law drain current Id ∝ (W/L)(Vgs−Vth)^α; t_p ≈ C_node·ΔV/I with charge sharing among internal stack nodes; spread = (max−min)/min of the per-pin delays; Cin = Q/VDD; area = ΣW + 0.8 µm per isolated well.",
+    "topology": "Fixed single-stage CMOS AOI41 complex gate. Pull-down: NMOS A–B–C–D in series from Y to ground, in parallel with an E NMOS. Pull-up: four parallel select PMOS from VDD to p1, then a series E PMOS from p1 to Y. Pin order is fixed. Open choices are the ten widths and optional isolated-well body ties on MNA, MNB and MNC. No devices may be added.",
+    "interfaces": "Each select input is driven by a weak buffer with a 3.95 fF per-pin load budget. The output drives a 10–30 fF load in the register-file write-enable path. The cell must fit a fixed 10.4 µm width-equivalent slot with fixed pin order for abutment. E is held low. The STA timing model assumes a single arc for A–D with a 6 %/6.75 % spread margin.",
+    "constraint_interactions": "Tapering stack widths to equalise pin delays trades against per-pin input capacitance and total area. Isolated wells remove body effect but each costs 0.8 µm of a tight slot. Upsizing select PMOS to speed the rising edge adds capacitance on p1 and on the inputs. The worst corner differs by row: spread versus absolute delay versus rise time, and fast versus slow corners or light versus heavy loads. Meeting spread at all corners can conflict with the area and load budgets.",
+    "operating_regime": "0.18 µm bulk CMOS at 1.8 V nominal (1.62–1.98 V). TT/SS/FF corners, 0–85 °C, 10–30 fF load. Transient single-input switching with the other selects high. Delays are in the ~100–800 ps range.",
+    "reasoning_required": "Extract threshold voltage versus body bias from test-chip and model data and compare them. Derive the pre-switch stack node voltages for each pin and edge. Use a bodies-to-source diagnostic to separate body-effect from charge and capacitance contributions to the spread. Identify which document (datasheet, STA report or harness) is wrong. Size the stacks, find where classic stack sizing fails, and justify each isolated well by the spread it removes versus its area cost. Sweep PVT and load to find the worst corner per row, then redesign or quantify the relaxation required."
+   },
+   "failure_mechanisms": [],
+   "provenance": {
+    "statement": "electrical_tasks/ELEC_CS_017_R_Problem_Statement.md"
+   },
+   "notes": []
+  },
+  {
+   "id": "EL_RL_001",
+   "kind": "existing",
+   "status": "existing",
+   "title": "Piezoelectric cantilever energy harvester with synchronized switched-inductor interface: patch placement and circuit parameter optimization",
+   "summary": "Choose piezo patch location, operating frequency, damping, inductor/capacitor/load and switching duty for a three-mode nonlinear piezo beam with a synchronous peak-threshold switch so as to maximize harvested-to-input energy ratio, while meeting deflection, voltage, stress, current, periodicity and energy-balance gates verified by a time-domain multiphysics simulation.",
+   "subdomain": "sensor and transducer electronics",
+   "descriptors": {
+    "phenomenon": "charge sharing and history-dependent state",
+    "design_freedom": "parameter selection: architecture and interfaces fixed by a real constraint, values open",
+    "reasoning": "coupled multiphysics reasoning"
+   },
+   "structure": {
+    "physical_principle": "Base-excited cantilever with a bonded piezoelectric layer converts strain to charge through modal electromechanical coupling. A synchronized switch closes at near-peak voltage and transfers charge through an inductor to an external capacitor and load, inverting or extracting energy. The drive is quasi-periodic because a second tone at 1.35·f_op makes the excitation repeat only every 20 cycles.",
+    "governing_equations": "Modal equations m_i q̈_i + 2ζ_i ω_i q̇_i + ω_i² q_i + nonlinear geometric terms − θ_i V = −Γ_i a_base(t), with ζ = η/2 per mode. Piezo electrical equation C_p V̇ + Σθ_i q̇_i + i_branch = 0. RL branch L di_L/dt = V − V_c − R_on i_L, coupled to the external capacitor and load. Coupling θ_i depends on modal curvature integrated over x_start..x_end. Fibre stress σ = E·y·w''(x). Efficiency k_eff² = E_R / ∫F·v_base dt over the final 20 cycles.",
+    "topology": "Fixed: non-uniform cantilever with a single piezo patch, three retained bending modes, and a synchronous peak-threshold switched RL–Cext–R interface. Open: patch start and end positions, operating frequency, modal loss factor, L, Cext, R_load, R_on and duty. The switch policy is prescribed.",
+    "interfaces": "Base acceleration excitation at 0.5 g. The patch-bound window lies between 0.02 and 0.14 m on the beam. Piezo electrodes connect to the switched inductor branch, which feeds the external capacitor and resistive load. The design is written to a JSON schema.",
+    "constraint_interactions": "Larger coupling and resonant drive raise extracted energy but also raise tip deflection (≤1 mm), voltage (≤15 V), E-field (≤2 MV/m), stress (≤25 MPa 95th percentile) and strain (<3e-4). Aggressive switching and inductor tuning improve extraction but increase inductor RMS current (≤20 mA), add phase drift and harmonic content, and cause loss of periodicity. Patch placement trades coupling of mode 1 against curvature cancellation in higher modes. Damping helps settling within 15 cycles but reduces the efficiency ratio.",
+    "operating_regime": "Steady-state forced vibration near the first bending resonance under two-tone base excitation, with moderate geometric nonlinearity. The interface is a nonlinear switched circuit with an event-driven state reset, evaluated over a horizon of up to 40 cycles or 0.5 s.",
+    "reasoning_required": "Build a reduced-order coupled electromechanical model with explicit switch-event location. Choose patch placement and circuit values to maximize the coupling ratio within electrical, mechanical and stress limits. Ensure the switching policy actually fires and yields a bounded, periodic response with low phase drift. Verify energy balance per subsystem and confirm timestep convergence."
+   },
+   "failure_mechanisms": [
+    "knife-edge-optimum-no-margin",
+    "nonstandard-metric-definition-masks-failure",
+    "self-consistency-only-verification"
+   ],
+   "provenance": {
+    "statement": "electrical_tasks/EL_RL_001/rev_2__248080/task_files/instruction.md"
+   },
+   "notes": [],
+   "pass_rate": {
+    "passed": 0,
+    "trials": 3,
+    "models": [
+     "openai/gpt-5.6-sol",
+     "openai/gpt-6-astra"
+    ]
+   }
+  },
+  {
+   "id": "elec-sky130-sar-adc-6bit-async",
+   "kind": "existing",
+   "status": "existing",
+   "title": "Six-bit asynchronous SAR ADC at 100 MS/s across three paired PVT corners in SKY130",
+   "summary": "Design a fully differential transistor-level async SAR ADC (bootstrapped sampling, binary CDAC, dynamic comparator, self-timed SAR logic, registered outputs) that meets sample-and-hold transfer, SNDR/ENOB, DNL/INL and <3 mW power at SS/TT/FF with one fixed circuit.",
+   "subdomain": "analog and mixed-signal circuits",
+   "descriptors": {
+    "phenomenon": "settling, slew and dynamic timing",
+    "design_freedom": "configuration design: solution family fixed, arrangement and sizing open",
+    "reasoning": "robustness across process, tolerance and environmental variation"
+   },
+   "structure": {
+    "physical_principle": "Charge-redistribution successive approximation: the input is sampled onto a differential capacitive DAC, then binary-weighted capacitors are switched between references so a dynamic latch comparator resolves one bit per cycle. Asynchronous self-timing lets each comparison trigger the next, so the whole six-bit search and output registration must fit inside the conversion window at the slowest corner while sampling switches must settle accurately within ~2 ns acquisition and hold against input changes.",
+    "governing_equations": "Q conservation on CDAC: V_top = V_in - sum(b_i*C_i/C_tot)*Vref; binary weights C_i = 2^i*C_u with parasitic-compensated ratios; sampling settling tau = R_on*C_s with R_on from bootstrap Vgs; kT/C and charge injection limits; comparator regeneration t ~ tau_latch*ln(dV_swing/dV_in); total conversion time T_acq + 6*(t_comp + t_logic + t_DAC_settle) < ~7 ns; power P = sum(C*V^2*f) + switching/short-circuit; SNDR from 64-point FFT, ENOB_norm = (SNDR + 10log(P_FS/P_sig) - 1.76)/6.02; DNL/INL from conservatively bracketed transitions.",
+    "topology": "Fixed solution family: fully differential async SAR with bootstrapped sample-and-hold, binary CDAC with dummy cap, StrongARM-style dynamic comparator, transistor-level handshake/ready detection, SAR registers and output buffers; internal arrangement, timing generation and sizing open; flash/pipeline/oversampling and ideal elements prohibited.",
+    "interfaces": "Fixed pins clks, dout5..dout0, vss, vdd, vinn, vinp, vrefn=VSS, vrefp=VDD; 10 ns clock with 20 ps edges via 50 Ω source and ~2 ns acquisition; differential input at VDD/2 common mode; 10 fF output loads; outputs decoded > VDD/2 at 9 ns each period; decoy input step at 2.2 ns after acquisition.",
+    "constraint_interactions": "Speed at SS/1.71 V/70 °C pushes larger devices and faster comparator/logic, which raises power and parasitics at FF; larger CDAC units improve matching/kT/C and linearity but slow DAC settling and raise switching power; sampling switch must be large for settling yet limit charge injection and hold leakage against decoy inputs; async timing must not race at FF nor run out of time at SS; output registration must be valid by 9 ns; overall power cap of 3 mW including clock-driver energy.",
+    "operating_regime": "1.71–1.89 V supply, 0–70 °C, ss/tt/ff corners, 100 MS/s, near-Nyquist 48.4 MHz input at ~94% full scale, deterministic transient simulation in ngspice with fixed solver settings.",
+    "reasoning_required": "Budget the conversion timeline and size the sampler, CDAC, comparator and self-timed logic so a single fixed design meets accuracy, timing and power at all three paired corners; verify with transfer, FFT, static transition search and power integration, diagnose first failing sample/transition from waveforms, and iterate bounded revisions with regression across all gates."
+   },
+   "failure_mechanisms": [],
+   "provenance": {
+    "statement": "electrical_tasks/elec-sky130-sar-adc-6bit-async-akram-badr/rev_3__208519/task_files/instruction.md"
+   },
+   "notes": []
+  },
+  {
+   "id": "elec-usr-002-01",
+   "kind": "existing",
+   "status": "existing",
+   "title": "Minimum-current nested-chopper instrumentation amplifier with offset calibration for neural recording",
+   "summary": "Design a 180 nm, 1.2 V fully differential nested-chopper IA with ripple reduction and on-chip offset calibration, minimising quiescent current (≤15 µA) while meeting noise, offset, CMRR, PSRR, THD, bandwidth and phase-margin specs across PVT and Monte-Carlo, verified in NGSpice.",
+   "subdomain": "analog and mixed-signal circuits",
+   "descriptors": {
+    "phenomenon": "thermal and flicker noise",
+    "design_freedom": "configuration design: solution family fixed, arrangement and sizing open",
+    "reasoning": "robustness across process, tolerance and environmental variation"
+   },
+   "structure": {
+    "physical_principle": "Chopper modulation moves the signal above the 1/f corner so that flicker noise and offset are rejected at demodulation. A second, outer chopper pair suppresses residual offset caused by charge injection in the inner pair. A continuous-time ripple-reduction loop and a calibration loop null the up-modulated offset ripple. Thermal noise per unit current is set by the input-pair gm/Id.",
+    "governing_equations": "Input-referred thermal noise v_n² ≈ 4kTγ/gm·(1+gm_load/gm_in). gm = (gm/Id)·Id, so noise and bias current trade off directly. Integrated noise = sqrt(∫v_n² df) over 0.5–5 kHz. Residual offset ∝ charge-injection mismatch × f_chop. Gain is set by the gm or capacitor ratio, 40 dB ±0.4 dB. f_3dB ≈ GBW/A. Phase margin comes from the pole/zero placement of the multi-stage path including the RRL. CMRR and PSRR are limited by mismatch and the tail impedance. THD depends on the input-pair overdrive relative to a 5 mV peak input.",
+    "topology": "Fixed solution family: a fully differential nested-chopper IA (inner and outer chopper pairs) with a continuous-time ripple-reduction filter after the demodulator, an offset calibration loop, and a bias generator, in exactly three hierarchical blocks. Open choices are the amplifier stage topology, device sizing, chopping frequencies and the calibration circuit implementation.",
+    "interfaces": "1.2 V supply (1.14–1.26 V). Supplied ideal non-overlapping clocks, BIST square-wave stimulus and a behavioural residual-offset extractor. Differential neural-signal input and differential output. MOS-only amplification from the supplied 180 nm model library.",
+    "constraint_interactions": "Lower current raises thermal noise and lowers GBW, which threatens the noise, bandwidth and phase-margin specs. Larger input devices improve flicker noise and mismatch but add capacitance, which hurts bandwidth and chopper charge injection, raising residual offset. Higher chopping frequency improves the 1/f corner margin but increases offset from charge injection and the switching current. The ripple-reduction and calibration loops add poles that threaten phase margin. Tight gain accuracy and THD at low overdrive conflict with weak-inversion biasing chosen for power efficiency. CMRR and PSRR above 95–115 dB demand matching that must survive Monte-Carlo.",
+    "operating_regime": "Micropower, low-frequency biomedical band of 0.5–5 kHz signal with 8–22 kHz bandwidth. Devices likely in weak or moderate inversion. Chopper clocks in the tens-of-kHz range. Corners tt/ff/ss/fs/sf over –20 to 60 °C with ±5% supply. 200-run Monte-Carlo.",
+    "reasoning_required": "Choose the gm/Id and current split to just meet the noise floor at minimum current. Select the inner and outer chopping frequencies against the flicker-noise corner and charge-injection offset. Design ripple-reduction and calibration loop dynamics that preserve phase margin. Size devices for mismatch so offset, CMRR and PSRR hold at 3σ across PVT. Build an automated NGSpice verification suite proving every spec, including periodic and noise behaviour of a chopped system."
+   },
+   "failure_mechanisms": [],
+   "provenance": {
+    "statement": "electrical_tasks/elec-usr-002-01/rev_1__176569/task_files/instruction.md"
+   },
+   "notes": []
+  },
+  {
+   "id": "statestorm-7",
+   "kind": "existing",
+   "status": "existing",
+   "title": "Seven-bit asynchronous SAR ADC in SKY130 robust to input history, timing and PVT",
+   "summary": "Design and size a transistor-level 7-bit asynchronous charge-redistribution SAR ADC (14 ns frame, 3-3.5 ns acquisition) in SKY130 that converts correctly and stably across a 24-state PVT/drive/load/startup matrix with tight DNL/INL, hysteresis, SNDR and power limits.",
+   "subdomain": "analog and mixed-signal circuits",
+   "descriptors": {
+    "phenomenon": "charge sharing and history-dependent state",
+    "design_freedom": "configuration design: solution family fixed, arrangement and sizing open",
+    "reasoning": "robustness across process, tolerance and environmental variation"
+   },
+   "structure": {
+    "physical_principle": "Differential bottom/top-plate sampling onto a binary-weighted capacitor DAC, charge redistribution to form an analog residual, regenerative latched comparator decisions, and self-timed asynchronous bit cycling; accuracy depends on complete reset of DAC, comparator and logic state between conversions so no charge or decision memory carries over.",
+    "governing_equations": "Residual V_res = V_in,diff - sum(b_i * C_i/C_tot * V_ref); C_i = 2^i*C_u; sampling settling tau = R_on*C_s with N*ln2 time constants needed for 7-bit accuracy within acquisition window; comparator regeneration t = tau_latch*ln(V_dd/V_res); total conversion = sum of 7 decision+DAC settling cycles <= ~9.5 ns; DNL/INL from capacitor ratio and kT/C and charge injection; reference disturbance dV = Q_switched/C_decap and I*R; dynamic power = C*V^2*f summed over gross source energy.",
+    "topology": "Fixed class: differential asynchronous SAR with binary capacitive DAC, transistor-only sampling switches (bootstrapped or transmission gate options), shared or per-bit dynamic comparator, transistor-generated self-timed delay/ready logic, SAR registers and output latches/drivers; internal arrangement and sizing open.",
+    "interfaces": "Pins acq, d6..d0, vss, vdd, vinn, vinp, vrefn, vrefp; single external acquisition clock with 35-50 ohm / 20-60 ps drive; reference via ideal or 10 ohm + 5 pF fixture, also 0.98 VDD independent reference; outputs loaded with 12 or 60 fF; outputs must be rail-valid (<0.2/>0.8 VDD, 0.3 V margin) and stable 13.1-13.5 ns, complete by 13.075 ns.",
+    "constraint_interactions": "Sampling switch size vs charge injection/kT/C and input linearity; unit cap size vs matching/noise vs DAC settling, reference droop and power; comparator speed at SS/1.7 V/85 C vs offset, kickback and power at FF; async delay margin must cover slowest corner yet finish before 13.075 ns; full reset for history independence vs short 3.0 ns acquisition; output drive into 60 fF vs power cap 2.35 mW core / 2.85 mW expanded; reference disturbance with 10 ohm source vs DAC switching energy; startup from zero rails without initial conditions.",
+    "operating_regime": "71.4 MS/s sampled-data, 1.7-1.9 V supply, -40 to 125 C, tt/ss/ff/sf/fs corners, common mode 0.48-0.52 VDD, full-scale large-step and near-Nyquist inputs, cold startup ramps over 1 ns, ngspice 20 ps max step.",
+    "reasoning_required": "Budget acquisition settling and asynchronous conversion timing across worst corners, size the CDAC and comparator for sub-0.3 LSB DNL/INL and <0.05 LSB hysteresis, ensure complete reset/isolation of residual, comparator and logic state against reversals and decoy input steps, guarantee startup without initial conditions, manage reference disturbance and output loading within power limits, and verify via the full matrix, diagnosing failures and regressing after revisions."
+   },
+   "failure_mechanisms": [],
+   "provenance": {
+    "statement": "electrical_tasks/statestorm-7-coupled-memory-timing-pvt-adc/rev_5__224341/task_files/instruction.md"
+   },
+   "notes": []
+  }
+ ]
+}

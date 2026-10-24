@@ -1,13 +1,13 @@
-"""Domain configuration: domains/<name>/{domain.json, axes.json, seeds.json, trials.json, limitations.json}.
+"""Domain configuration: domains/<name>/{domain.json, axes.json, trials.json, limitations.json, ledger.json}.
 
-Every stage reads its domain-specific text, files and lists from here, so adding aero or mechanical means adding a
-folder, not editing code. limitations.json is written by mine.py.
+Every stage reads its domain-specific text and lists from here, so adding aero or mechanical means adding a folder,
+not editing code. limitations.json is written by mine.py; ledger.json is written by run.py.
 """
 import json
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-Kforge = HERE.parent / 'forge-ee-verifiers-library'
+REPO = HERE.parent / 'forge-ee-verifiers-library'  # only mine.py reads past trials from here
 DOMAINS = HERE / 'domains'
 GUIDELINES = HERE / 'guidelines'
 CANARY = 'FAIR-FORGE-CANARY 3326b524-149d-466b-b660-7e68d982ee97'
@@ -28,9 +28,9 @@ class Domain:
         self.cfg = json.loads((self.dir / 'domain.json').read_text())
         self.name = self.cfg['name']
         self.axes_file = self.dir / 'axes.json'
-        self.seeds_file = self.dir / 'seeds.json'
         self.trials_file = self.dir / 'trials.json'
         self.limitations_file = self.dir / 'limitations.json'
+        self.ledger_file = self.dir / 'ledger.json'
 
     def __getitem__(self, key):
         return self.cfg[key]
@@ -42,3 +42,22 @@ class Domain:
         if not self.limitations_file.exists():
             raise SystemExit(f'no {self.limitations_file.relative_to(HERE)}: run `uv run mine.py --domain {self.name}` first')
         return json.loads(self.limitations_file.read_text())
+
+    def axes(self):
+        return json.loads(self.axes_file.read_text())
+
+    def subdomains(self):
+        return list(self.axes()['subdomain'])
+
+    def families(self, subdomain):
+        return self.axes()['subdomain'][subdomain]
+
+    def vocab(self):
+        a = self.axes()
+        return {dim: a[key] for dim, key in self['descriptors'].items()}
+
+    def ledger(self):
+        return json.loads(self.ledger_file.read_text()) if self.ledger_file.exists() else []
+
+    def save_ledger(self, entries):
+        self.ledger_file.write_text(json.dumps(entries, indent=1, ensure_ascii=False))

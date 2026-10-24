@@ -1,159 +1,145 @@
-# taskgen_poc: Rainbow-Teaming-style task generation for FAIR Forge
+# taskgen_poc: standalone task + handbook generation for FAIR Forge
 
-Goal: hand an SME a TB4 (Harbor) task that targets a weakness real agent trials have shown, has a real kforge grader,
-and has been built and graded once by an evaluator, so the SME's work is running it on Astra, hardening it if Astra
-passes, and writing the golden solution if Astra fails.
-
-Every stage follows the documents in `guidelines/` (vendor guidelines, the function-first primer, client feedback,
-generation rules, the general agent guideline). Generation is always split by subdomain.
+Goal: output engineering design tasks (a brief and a separate handbook) that follow the client guidelines, target a
+model failure mode already seen in real trials, look hard to the LLM judge, and are standalone: they assume nothing
+exists beyond what the brief states or the task writes out itself. Accepted tasks go to the SKILL.md check by hand.
+There is no execution backend (no KiCad, kforge, Docker, evaluator build or packaging). That comes later, once
+standalone generation is consistent.
 
 ```
-mine (once)          past trials ──> limitations.json (the model's weaknesses)
-grid                 limitation x subdomain cells, each with an elite (archive.json)
-per draft:
-  sample cell ──> prompt adapter (concept) ──> generator (draft) ──> rule check + novelty
-  evaluator loop:  static review ──> kforge kit ──> evaluator build + grade ──> assessment
-                   └─ revise (cheap model) and repeat, or ready ──> elite of its cell
-package              ready drafts ──> TB4 / CF-1.0 task folder + zip
+mine (once)   past trials ──> limitations.json
+per candidate:
+  sample cell ──> concept ──> draft ──> lint ──> judge ──> accepted task
+  (limitation x subdomain      (generator)  (rules   (guidelines + standalone +
+   x descriptors)                            1-5, 9)  difficulty vs. astra_target)
+          ├── wording problems (tools, settings, preferences, length): edit call on brief + handbook only
+          ├── judge failures that are text-only (brief criteria): edit call, then re-judge once
+          └── structural lint problems, other judge failures, too easy: regenerate (--retries)
 ```
 
-| Part | File | What it does |
-|---|---|---|
-| Mining | `mine.py` | Reads the hand-picked evaluated tasks in `domains/<d>/trials.json`; separates model limitations from task defects and infra; writes `limitations.json`. |
-| Grid / archive | `archive.py` | Limitation x subdomain grid with one elite per cell (replaced only by higher fitness), further descriptors (phenomenon, design freedom, reasoning) sampled toward under-represented values, failed attempts kept with reasons, novelty check (cheap model). Existing tasks are indexed only for the novelty check. |
-| Prompt adapter | `adapter.py` | Rainbow Teaming's mutator (cheap model): turns a cell into a task concept, or mutates the cell's elite concept toward higher fitness. Sees only the limitation's mechanism, the cell, the guidelines and evaluator feedback. |
-| Generator | `sample.py` | Claude Opus (high effort) writes the full draft from the concept. It never sees existing tasks, so the mined tasks cannot collapse diversity. Plans every grader check with a kforge check id. Rule check (`lint.py`) and novelty check filter it. |
-| Static review | `judge.py` | Cheap model (default `moonshotai/kimi-k3` over OpenRouter): SKILL.md + guidelines + an Astra estimate. "not a forge task" stops the draft at once. |
-| Kit | `kit.py`, `catalog.py` | Builds the kforge grader (`requirements.yaml`, catalogue, models) from the draft and the kforge validator catalogue, builds the starter KiCad project from the ports, validates both in the image (empty and starter-only submissions must fail cleanly). |
-| Evaluator build | `solver.py`, `sandbox.py` | The cheap model designs the circuit in the `forge-ee-grader` image (no network) with the reference outline and a grade tool, until a passing design (a good run). `--probe` adds a blind attempt. |
-| Assessment | `evaluate.py` | Combines review, kit coverage and runs: outcome (feasible / grader problem / infeasible / inconclusive), Astra estimate, fitness = 1 - p for feasible runs. Ready = feasible + good run + p <= `astra_target`. |
-| Loop | `refine.py` | Review -> build -> assess, revising with Claude Sonnet 5.5 at medium effort between rounds (`--rounds`). |
-| Package | `package.py` | CF-1.0 / TB4 layout (`tasks/lp1-broadband-match` as reference): kforge grader in `tests/` (kforge vendored), starter and inputs in `environment/`, handbook outside `environment/`, failing `solution/solve.sh`, the evaluator's passing design in `sme/`, `SME_NOTES.md`. |
+| File | What it does |
+|---|---|
+| `mine.py` | Reads hand-picked evaluated trials (`domains/<d>/trials.json`) and writes `limitations.json`. |
+| `sample.py` | Cell sampling (confidence-weighted, empty cells first, descriptors toward under-represented values) and the generator (`Draft` schema, prompts). |
+| `adapter.py` | Concept step (Claude Sonnet 5.5 by default, `TASKGEN_ADAPTER_MODEL`): cell -> task concept. |
+| `lint.py` | Mechanical rules (split into wording problems an edit call fixes and structural ones): word limits, no tools or benchmark words in the brief, no preference wording, every referenced file exists, SPICE files parse. |
+| `judge.py` | Split specification/difficulty review (MiMo by default), 60k tokens per stage. Mandatory defects block acceptance; secondary preferences and difficulty estimates are advisory. Completed stages can be checkpointed. |
+| `parallel_run.py` | Persistent parallel generation and judge queues, novelty checks, resume and centralized publishing. |
+| `run.py` | The serial loop and the outputs. `--skillcheck <run>` runs the SKILL.md stage 1 screen (`idea_review.py`) on a run's tasks. |
+| `legacy/` | The previous pipeline (kforge kit, evaluator build, packaging, archive/novelty, tests) for when verifier coupling returns. |
 
 ## Run
 
 ```
-cd taskgen_poc
-export ANTHROPIC_API_KEY=...        # generator, reviser, kit builder
-export OPENROUTER_API_KEY=...       # adapter, reviewer, novelty, evaluator, assessment (OR_API_KEY also works)
-uv run mine.py --domain electrical  # once, and again when trials.json gains tasks
-uv run run.py --list                # the subdomains
-uv run run.py --subdomain "power electronics" --n 10
-uv run run.py --run runs/<id> --from review    # re-run the evaluator loop
+export ANTHROPIC_API_KEY=...        # generator (claude-* models)
+export OPENROUTER_API_KEY=...       # concept, judge (OR_API_KEY also works)
+uv run run.py --list
+uv run run.py --subdomain "power electronics" --n 10 [--retries 2] [--generator-model xiaomi/mimo-v2.6-pro]
+uv run run.py --skillcheck runs/<id>
+.venv/bin/python -m unittest discover -s tests -v    # offline, model calls stubbed
 ```
 
-Needs Docker with `forge-ee-grader:2026-10-09` (it runs as amd64; on Apple silicon it is emulated and slower).
-`--static-only` skips the build. Output: `runs/<id>/drafts/<slug>/` (draft, rounds/, kit/, eval/, evaluation.json),
-`runs/<id>/packages/<slug>.zip` for ready drafts (`--package-failed` packages all), and `runs/<id>/cost.json`.
+Output in `runs/<id>/`: `tasks/<slug>/` (instruction.md, handbook.md, inputs/, draft.json, judge.json) for accepted
+tasks; `too_easy/` for drafts that pass the guidelines but never looked hard; `rejected/` for every attempt sent back,
+with why; `prompts/` (exact generator requests), `cost.json`, `summary.json`.
+`domains/<d>/ledger.json` records every candidate: it drives coverage balancing and the "already drafted" list.
 
-## Cost controls
+## Notes
 
-- Revisions use Claude Sonnet 5.5 at medium effort (`TASKGEN_REVISE_MODEL`, `TASKGEN_REVISE_EFFORT`).
-- Every Claude system prompt has a 1-hour cache breakpoint (guidelines and the check catalogue repeat every call).
-- "not a forge task" stops a draft before any revision; the build runs only after the rules pass.
-- The adapter, reviewer, evaluator and assessment run on the cheap model (`TASKGEN_REVIEW_MODEL`); OpenRouter
-  requests set `data_collection: "deny"`.
-- `runs/<id>/cost.json` records tokens and dollars per model and purpose for every invocation.
+- The judge's pass probability is one model's opinion, not a measurement. Treat it as a filter, calibrate against trials.
+- The generator is told the contract in `domains/<d>/domain.json` (`deliverable_contract`): standard file formats,
+  inputs stated or written out in full, no starter project, library, vendor model or datasheet.
+- Guidelines in `guidelines/` are injected into the generator, concept step and judge unchanged.
+- Generation is repair-free by design: no "diagnosis and repair" task form (it forced a supplied failing netlist). The
+  `Draft` schema carries only what the judge and a reviewer read, to keep each generation short.
 
-## Domains
+## Parallel generation with a persistent judge queue
 
-`domains/<name>/` holds `domain.json` (discipline, deliverable contract, images, check families, tool names, budgets),
-`axes.json` (subdomains with their families, descriptors, secondary axes), `seeds.json`, `trials.json`. Aero and
-mechanical are new folders plus their kforge check families and images.
+Use `parallel_run.py` for a new batch. It shares the concepts, generation, lint, split MiMo judge and packaging
+code with `run.py`; it does not launch multiple independent ledger writers.
 
-## What a ready package is and is not
-
-- Is: a short brief aimed at one observed limitation, a separate handbook, a real kforge grader that an evaluator's
-  design passed, an Astra estimate with the binding checks, and the evaluator's design as a starting point.
-- Is not: a released task. There is no golden solution (`solution/solve.sh` fails on purpose), the Astra figure is an
-  estimate, and the limits still need an SME's review. Run it on Astra (8 attempts) before anything else.
-
-### Executable readiness and evaluator configuration
-
-The design evaluator defaults to `xiaomi/mimo-v2.6-pro` on OpenRouter. Override it with
-`TASKGEN_EVALUATOR_MODEL`; `TASKGEN_REVIEW_MODEL` still controls review/assessment. The evaluator
-has a maximum 600-second wall budget. Timeout records reward 0 and an inconclusive outcome,
-not evidence of difficulty or infeasibility.
-
-Static-only review never marks a draft ready; unavailable Docker is an explicit error. Ready means
-an executable passing design, a validated kit, separately authored executable coverage tests, and
-no unresolved feasibility/model/measurement blockers. Difficulty estimates are advisory, and archive
-fitness records feasibility rather than optimizing estimated target-model failure. Actual target-model
-trial calibration is still required before claiming benchmark difficulty.
-
-The kit audit checks each requirement and authors at least six tests per requirement (two valid designs,
-a violation, a boundary, an invariance, and a guard fault). Tests run in the image; missing, skipped or
-failing cases block the kit. This is additional model-assisted evidence, not a substitute for an engineer's
-independent physics review. Missing authoritative models must be supplied or the draft revised; the pipeline
-must not fabricate them to pass. Existing incomplete drafts are not automatically repaired or certified.
-
-Evaluation preserves all output files. Packaging loads kit-local extensions through the same runner and
-requires evidence tied to the current draft hash. Regression checks: `.venv/bin/python -m unittest discover -s tests -v`.
-
-### Run selected steps
-
-`run.py` defaults to **sampling only**. Use `--full` explicitly for the entire workflow.
-
-```sh
-uv run run.py --step sample --n 5
-uv run run.py --run runs/<id> --step stage1
-uv run run.py --run runs/<id> --step static
-uv run run.py --run runs/<id> --step evaluate
-uv run run.py --run runs/<id> --step package
-uv run run.py --step sample stage1 --n 5
-uv run run.py --full --n 5
+```bash
+SSL_CERT_FILE=/tmp/taskgen-ca.pem .venv/bin/python -u parallel_run.py \
+  --n 50 --generation-workers 3 --judge-workers 2
 ```
 
-- `sample`: generate drafts.
-- `stage1`: apply only SKILL.md Stage 1 idea screening (advance/reshape/drop, rank, reasons and next inputs).
-  Saves `stage1_review.json` and `.md` per draft and a ranked summary at the run root. It does not revise drafts,
-  execute Docker, or alter readiness. Screening results are advisory; full execution does not automatically
-  discard ideas on the basis of this report.
-- `static`: draft review against the full-task rules, with packaging checks deferred; no Docker or revisions.
-  Writes `static_review.json`. It does not modify the draft, Stage 1 report, or executable evaluation evidence.
-  This is not a completed-package certification and cannot grant readiness.
-- `evaluate`: the static review, revision, kit audit and executable evaluation loop.
-- `package`: package ready drafts (`--package-failed` includes unfinished drafts).
-- `--full`: sample → stage1 → evaluate (includes static review) → package.
+`--n 50` means **50 candidate slots**, each with up to `--retries 2` revisions. It does not promise 50 accepted tasks.
+A single additional novelty worker is used. Model credentials must already be exported in the calling shell;
+workers inherit `SSL_CERT_FILE` and the API environment without storing credentials in the run files.
+The default models remain Claude Sonnet for concepts/generation/novelty and MiMo for the two-stage judge.
+`--generator-model`, `--judge-model`, and `--novelty-model` can override these for a new run.
 
-`--step` accepts multiple steps in the order given. Steps that do not include sampling require `--run`.
-`--from` runs a step and subsequent steps; the legacy `--from review` aliases `--from evaluate`.
+To leave it running in screen, from this repository directory:
 
-Each `evaluate` invocation replaces that draft's previous `rounds/`, `kit/`, `eval/`, `evaluation.json`, and
-`skill_check.json`. It preserves `stage1_review.*` and `static_review.json`, so idea screening, static review, and
-executable evaluation remain separate. The reviewer and design evaluator are configured independently with
-`TASKGEN_REVIEW_MODEL` and `TASKGEN_EVALUATOR_MODEL`.
-
-Generation-support roles are configured separately: `TASKGEN_ADAPTER_MODEL`, `TASKGEN_NOVELTY_MODEL`, and
-`TASKGEN_INDEX_MODEL` default to `moonshotai/kimi-k3`. MiMo can therefore be reserved for review and executable
-evaluation without using it for concepts, indexing, novelty checks, or draft writing.
-
-Choose the draft generator without running the evaluation loop:
-
-```sh
-uv run run.py --step sample --n 5 --generator-model xiaomi/mimo-v2.6-pro
-uv run run.py --step sample --n 5 --generator-model claude-sonnet-5-5
+```bash
+SSL_CERT_FILE=/tmp/taskgen-ca.pem screen -dmS taskgen-50 /bin/zsh -c \
+  'caffeinate -i .venv/bin/python -u parallel_run.py --n 50 --generation-workers 3 --judge-workers 2 >> parallel-50.log 2>&1'
 ```
 
-Bare `claude-*` IDs use Anthropic (`ANTHROPIC_API_KEY`); `provider/model` IDs use OpenRouter
-(`OPENROUTER_API_KEY` or `OR_API_KEY`). The default is `TASKGEN_GENERATOR_MODEL`, falling back to
-`claude-opus-5-5`. This selects the draft writer; concept adaptation and novelty checks use their dedicated models.
-Sampling retains its lint/novelty filters but does not invoke the evaluation/revision loop.
-Each draft records its `generator_model`.
+On Linux omit `caffeinate -i`. On macOS keep the machine plugged in and the lid open.
 
-Before each writer call, the exact secret-free request is saved at
-`runs/<id>/generation_prompts/<draft-number>/attempt-<n>.json`. It includes the assembled system instructions,
-dynamic concept/cell prompt, full response schema, model, reasoning level, token limit, and provider route. The file
-is written before the call, so failed or interrupted generations remain inspectable.
+The command prints its new `runs/<timestamp>-parallel-<suffix>` folder. Resume that folder with:
 
-### Time and cost measurement
+```bash
+SSL_CERT_FILE=/tmp/taskgen-ca.pem .venv/bin/python -u parallel_run.py \
+  --resume runs/<timestamp>-parallel-<suffix> --generation-workers 3 --judge-workers 2
+```
 
-Sampling writes `runs/<id>/sampling_timing.json` live. For each candidate it records concept time, every generation
-attempt, lint time, novelty-review time, retries, and total wall time until the draft passes lint and novelty. Archive
-indexing is reported separately. `mean_sampling_acceptance_seconds` is the steady-state mean for accepted drafts;
-`end_to_end_seconds_per_accepted` also includes indexing and skipped candidates.
+Resume uses the original run's candidate count, models, seed and revision settings. Worker counts can change.
+It handles parallel runs only; use `rejudge.py` for previously generated serial-run drafts.
+Ctrl-C stops workers and leaves durable state. Incomplete jobs are reclaimed on resume; unjudged drafts are judged
+again without regenerating them. A completed specification review is reused if the difficulty review was interrupted,
+provided the request/model/guidelines match. Finished candidates are not regenerated or rejudged.
 
-Every `run.py` invocation appends to `runs/<id>/pipeline_metrics.json`. A `--full` record contains total elapsed time,
-time and model cost by step, generated/ready/packaged counts, total cost, cost per generated draft, and cost/time per
-ready task. A task counts as ready only after the executable readiness gates pass. Failed and interrupted invocations
-are also recorded. `cost.json` remains the cumulative model-cost ledger.
+### Queue, novelty and outputs
+
+- SQLite `queue.sqlite` is the authoritative queue. A coordinator claims jobs and commits transitions; child processes
+  do not edit it. A shared domain lock prevents new parallel, serial-generation or rejudge commands from concurrently
+  writing the ledger. Stop older running processes that predate the lock before starting this batch.
+- Up to three generation workers feed saved drafts to two judge workers immediately, without waiting for the whole
+  batch. Each judge job runs the specification and difficulty stages sequentially, with 60k output tokens per stage.
+- Concept novelty is checked against accepted past tasks and concepts already reserved in this batch. Comparison
+  uses a deterministic lexical shortlist (up to 12 full engineering summaries), followed by an LLM assessment of
+  physical function, design decisions, operating regimes and failure mechanism. It is a heuristic, not exhaustive
+  semantic search across every past task. Legacy `runs/*/drafts/*/draft.json` and accepted `tasks/` are included.
+- Final novelty admission is serialized and compares against the latest accepted tasks, preventing two concurrent
+  duplicates from both being accepted. Concrete duplicates require a new concept within the slot's revision budget.
+  Unclear novelty or exhausted review transport retries preserve the candidate as `unjudged`, with evidence.
+- `tasks/`, `entries/`, `summary.json`, `cost.json`, and the domain ledger are written only by the coordinator.
+  Accepted folders also include `novelty.json`. Stage 1 remains a separate `run.py --skillcheck <run>` step.
+- `work/<slot>/attempt-<n>/<stage>/worker.log` captures each worker's streaming progress. Generator requests, raw
+  generated drafts, completed judge-stage checkpoints and result receipts are kept beside the logs. `history/`
+  retains finished worker receipts, including failed/rejected attempts. `unjudged/` preserves complete drafts.
+- API usage has unique call IDs so cached/resumed judge-stage usage is counted once. Completed-call receipts are
+  durable, but a provider call killed before returning usage can still be billed without appearing in local totals.
+- The scheduler bounds concurrency, not provider rate limits or total spend. Use fewer workers if throttled. API
+  failures do not get converted into engineering rejection or blind task regeneration during judging.
+
+Implementation includes offline tests for queue claims/recovery, usage deduplication, novelty admission/retries,
+checkpoint reuse and API failure preservation. These changes have **not been executed or tested in a live batch**.
+
+### Dollar budget and deferring novelty
+
+Resume the same batch without novelty calls and with a cumulative $50 local scheduling budget:
+
+```bash
+SSL_CERT_FILE=/tmp/taskgen-ca.pem .venv/bin/python -u parallel_run.py \
+  --resume runs/<parallel-run> --budget-usd 50 --skip-novelty \
+  --generation-workers 3 --judge-workers 2
+```
+
+These two flags can override the saved run settings. Previous spend is included; this is not $50 of additional
+spending. Concepts/drafts/reviews already saved are reused. Queued novelty checks are bypassed, and passing judged
+tasks are packaged with `novelty.json` marked deferred. No novelty worker or novelty model call is started. The
+separate later novelty/ranking/NMS workflow is not implemented by this flag.
+
+`budget.json` reports recorded usage, reserved allowance, and their total. Before dispatch, the coordinator reserves
+$1 per concept, $4 per draft (including wording edits), and $1 per split-judge job. Successful priced calls release
+the allowance in favor of actual usage. Failed or interrupted calls retain their allowance conservatively, including
+calls that were in flight before budget tracking was introduced. When the remaining allowance cannot fund another
+job, dispatch pauses and pending jobs stay in SQLite; in-flight jobs finish. Resume can raise the budget later.
+
+This is a local scheduling cap with conservative estimates, **not a provider-enforced billing guarantee**. Pricing,
+SDK retries, and usage lost during interruption can differ from the reserved amounts. Use provider/account-side
+spending controls too if an exact billing ceiling is essential. The runner does not terminate paid calls merely
+because a completed call reports more usage than estimated.

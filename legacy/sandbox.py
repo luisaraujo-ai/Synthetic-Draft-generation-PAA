@@ -11,7 +11,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from domain import REPO
+from domain import KForge
 
 STARTER = r'''
 import json, sys

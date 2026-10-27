@@ -24,3 +24,7 @@ ws_tmp/
 *-run/
 # Reviewed gallery downloads are intentional deployment content.
 !task-gallery/gallery_data/*.zip
+
+# Local gallery activity database
+*.sqlite3
+*.sqlite3-*

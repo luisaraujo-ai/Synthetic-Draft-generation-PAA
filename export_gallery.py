@@ -31,6 +31,7 @@ def export(runs, destination):
             if (tmp/f'{key}.zip').stat().st_size>4_000_000:raise ValueError(f'{directory}: ZIP exceeds 4 MB download budget')
             row=item['row']
             catalog.append({'key':key,'id':item['id'],'title':row[1],'description':row[2], 'domain':row[3],
+                            'bundle_digest':hashlib.sha256((tmp/f'{key}.zip').read_bytes()).hexdigest(),
                             'rank':review['rank'],'feasibility':row[5],'difficulty':row[6],'concern':row[7],
                             'brief':(directory/'instruction.md').read_text(),
                             'handbook':(directory/'handbook.md').read_text() if (directory/'handbook.md').exists() else '',

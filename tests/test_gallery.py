@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import urlencode
 from evidence import draft_digest
 from export_gallery import export
 from publish_drive import atomic
@@ -25,7 +26,7 @@ class Gallery(unittest.TestCase):
         task={'key':'abc','id':'run/task','title':'<script>bad</script>','description':'Design','domain':'EE','rank':8,
               'feasibility':'Unverified','difficulty':'Estimate','concern':'Check corners','brief':'<img src=x>','handbook':'notes','review':'review'}
         atomic(data/'catalog.json',{'tasks':[task]});(data/'abc.zip').write_bytes(b'PK-test')
-        self.env=patch.dict(os.environ,{'GALLERY_PASSWORD':'a-long-shared-test-password'},clear=True);self.env.start();self.addCleanup(self.env.stop)
+        self.env=patch.dict(os.environ,{'GALLERY_PASSWORD':'a-long-shared-test-password','GALLERY_SQLITE_PATH':str(self.root/'events.sqlite3'),'GALLERY_ADMIN_PASSWORD':'admin-test-password'},clear=True);self.env.start();self.addCleanup(self.env.stop)
         self.path=patch.object(web,'ROOT',self.root);self.path.start();self.addCleanup(self.path.stop)
     def request(self,path='/',method='GET',body='',cookie='',origin='https://example.test',csrf=True,host='example.test'):
         if method=='POST' and csrf:
@@ -49,7 +50,7 @@ class Gallery(unittest.TestCase):
         headers,_=self.request('/login','POST','password=a-long-shared-test-password')
         self.assertIn('303',headers)
         self.assertIn('HttpOnly; SameSite=Strict',headers);self.assertIn('; Secure',headers)
-        headers,body=self.request('/download/abc',cookie=self.cookie())
+        headers,body=self.request('/download/abc','POST',self.feedback(name='Alice'),cookie=self.cookie())
         self.assertIn('200',headers);self.assertIn('private, no-store',headers);self.assertEqual(body,b'PK-test')
     def test_wrong_password_and_cross_origin_denied(self):
         with patch.object(web.time,'sleep'):
@@ -90,6 +91,87 @@ class Gallery(unittest.TestCase):
         for anchor in ('assessment','brief','handbook','review'):
             self.assertIn(('id="'+anchor+'"').encode(),body)
         self.assertIn(b'/download/abc',body)
+
+    def feedback(self,**overrides):
+        task=json.loads((self.root/'gallery_data/catalog.json').read_text())['tasks'][0]
+        values={'version':web.task_version(task),'category':'General','feedback':'<script>details</script>',
+                'name':'=FORMULA()','feasible':'Yes','difficulty':'Easy','hardening_hours':'3.5'}
+        values.update(overrides)
+        return urlencode(values)
+
+    def admin_cookie(self):
+        password=os.environ['GALLERY_ADMIN_PASSWORD']
+        return self.cookie()+'; gallery_admin='+web.session(password,password+':admin')
+
+    def test_download_requires_name_and_displays_names(self):
+        headers,body=self.request('/download/abc',cookie=self.cookie())
+        self.assertIn(b'Register and download ZIP',body)
+        self.assertEqual(web.event_rows(),[])
+        self.assertIn('400',self.request('/download/abc','POST',self.feedback(name=' '),cookie=self.cookie())[0])
+        self.assertIn('403',self.request('/download/abc','POST',self.feedback(name='Alice'),cookie=self.cookie(),csrf=False)[0])
+        self.assertIn('409',self.request('/download/abc','POST',self.feedback(name='Alice',version='stale'),cookie=self.cookie())[0])
+        self.request('/download/abc','POST',self.feedback(name='<img src=x>'),cookie=self.cookie())
+        _,body=self.request('/task/abc',cookie=self.cookie())
+        self.assertIn(b'Downloaded by',body);self.assertIn(b'&lt;img src=x&gt;</strong>',body)
+        self.assertIn(b'current version',body)
+        self.assertEqual(web.event_rows()[0]['name'],'<img src=x>')
+
+    def test_download_persistence_and_visitor(self):
+        cookie=self.cookie()+'; gallery_visitor='+'a'*32
+        headers,_=self.request('/download/abc','POST',self.feedback(name='Alice'),cookie=cookie)
+        self.assertIn('gallery_visitor='+'a'*32,headers)
+        rows=web.event_rows()
+        self.assertEqual(len(rows),1);self.assertEqual(rows[0]['kind'],'download')
+        self.assertEqual(rows[0]['visitor'],'a'*32)
+        self.assertEqual(rows[0]['task_id'],'run/task')
+        self.assertEqual(len(rows[0]['version']),64)
+        self.request('/download/missing',cookie=cookie)
+        self.assertEqual(len(web.event_rows()),1)
+
+    def test_feedback_persistence_review_and_exports(self):
+        headers,_=self.request('/feedback/abc','POST',self.feedback(),cookie=self.cookie())
+        self.assertIn('303',headers)
+        row=web.event_rows()[0]
+        self.assertEqual(row['feasible'],'Yes');self.assertEqual(row['difficulty'],'Easy')
+        self.assertEqual(row['hardening_hours'],'3.5')
+        _,body=self.request('/admin',cookie=self.admin_cookie())
+        self.assertIn(b'&lt;script&gt;details',body);self.assertNotIn(b'<script>',body)
+        self.assertIn(b'Hours to make hard: 3.5',body)
+        headers,body=self.request('/admin/export.json',cookie=self.admin_cookie())
+        self.assertEqual(json.loads(body)[0]['feedback'],'<script>details</script>')
+        headers,body=self.request('/admin/export.csv',cookie=self.admin_cookie())
+        self.assertIn(b"'=FORMULA()",body)
+        self.assertIn('attachment;',headers)
+
+    def test_feedback_auth_csrf_validation_and_version(self):
+        self.assertIn('303',self.request('/feedback/abc','POST',self.feedback())[0])
+        self.assertIn('403',self.request('/feedback/abc','POST',self.feedback(),cookie=self.cookie(),csrf=False)[0])
+        self.assertIn('403',self.request('/feedback/abc','POST',self.feedback(),cookie=self.cookie(),origin='https://evil.test')[0])
+        for overrides in ({'hardening_hours':''},{'hardening_hours':'NaN'},{'hardening_hours':'-1'},
+                          {'feasible':'invalid'},{'difficulty':''},{'feedback':'x'*10001}):
+            self.assertIn('400',self.request('/feedback/abc','POST',self.feedback(**overrides),cookie=self.cookie())[0])
+        self.assertIn('409',self.request('/feedback/abc','POST',self.feedback(version='old'),cookie=self.cookie())[0])
+        self.assertEqual(web.event_rows(),[])
+        self.assertIn('303',self.request('/feedback/abc','POST',self.feedback(difficulty='Hard',hardening_hours='',feedback=''),cookie=self.cookie())[0])
+
+    def test_admin_separate_password_and_logout(self):
+        for path in ('/admin','/admin/export.csv','/admin/export.json'):
+            headers,body=self.request(path,cookie=self.cookie())
+            self.assertIn(b'Admin password',body);self.assertNotIn(b'event_id',body)
+        with patch.object(web.time,'sleep'):
+            self.assertIn('403',self.request('/admin/login','POST','password=wrong',cookie=self.cookie())[0])
+        headers,_=self.request('/admin/login','POST','password=admin-test-password',cookie=self.cookie())
+        self.assertIn('gallery_admin=',headers);self.assertIn('303',headers)
+        headers,_=self.request('/logout','POST',cookie=self.admin_cookie())
+        self.assertIn('gallery_admin=; ',headers)
+        self.assertEqual(headers.count('Set-Cookie:'),2)
+
+    def test_storage_failure_does_not_claim_feedback_saved(self):
+        with patch.object(web,'record_event',side_effect=RuntimeError('private detail')):
+            headers,body=self.request('/feedback/abc','POST',self.feedback(),cookie=self.cookie())
+            self.assertIn('503',headers);self.assertNotIn(b'private detail',body)
+            headers,body=self.request('/download/abc','POST',self.feedback(name='Alice'),cookie=self.cookie())
+            self.assertIn('503',headers);self.assertNotEqual(body,b'PK-test')
 
     def test_export_gating_and_zip(self):
         run=self.root/'run';folder=run/'tasks/a';draft={'title':'Example','instruction_md':'Design.'};digest=draft_digest(draft)

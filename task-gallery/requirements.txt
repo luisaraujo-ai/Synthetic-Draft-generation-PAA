@@ -1,1 +1,1 @@
-# Standard-library Python runtime; no third-party dependencies.
+psycopg[binary]>=3.2,<4

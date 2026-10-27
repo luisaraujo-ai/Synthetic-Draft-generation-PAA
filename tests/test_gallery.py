@@ -5,7 +5,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from urllib.parse import urlencode
 from evidence import draft_digest
 from export_gallery import export
@@ -165,6 +165,23 @@ class Gallery(unittest.TestCase):
         headers,_=self.request('/logout','POST',cookie=self.admin_cookie())
         self.assertIn('gallery_admin=; ',headers)
         self.assertEqual(headers.count('Set-Cookie:'),2)
+
+    def test_neon_database_url_fallback_and_explicit_override(self):
+        driver=MagicMock()
+        with patch.dict('sys.modules',{'psycopg':driver}):
+            for settings,expected in (({'DATABASE_URL':'postgresql://neon/test'},'postgresql://neon/test'),
+                                      ({'DATABASE_URL':'postgresql://neon/test','GALLERY_DATABASE_URL':'postgresql://override/test'},'postgresql://override/test'),
+                                      ({'DATABASE_URL':'postgresql://neon/test','GALLERY_DATABASE_URL':'  '},'postgresql://neon/test')):
+                with patch.dict(os.environ,settings):
+                    with web.database() as (conn,mark):self.assertEqual(mark,'%s')
+                    driver.connect.assert_called_with(expected,connect_timeout=5)
+                    conn.commit.assert_called();conn.close.assert_called()
+
+    def test_storage_logs_do_not_expose_credentials(self):
+        with self.assertLogs(level='ERROR') as logs:
+            web.storage_error(RuntimeError('password=SECRET connection string'))
+        self.assertNotIn('SECRET',' '.join(logs.output))
+        self.assertIn('RuntimeError',' '.join(logs.output))
 
     def test_storage_failure_does_not_claim_feedback_saved(self):
         with patch.object(web,'record_event',side_effect=RuntimeError('private detail')):

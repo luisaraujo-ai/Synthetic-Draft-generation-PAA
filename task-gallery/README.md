@@ -43,6 +43,8 @@ The catalog is published as a snapshot; exporting again replaces its list.
    - `GALLERY_DATABASE_URL`: the PostgreSQL connection string, including the database
      provider's TLS options (for example `?sslmode=require`). Use separate databases
      for Production and Preview so preview testing does not affect production records.
+   Neon’s automatically injected `DATABASE_URL` is also supported; no duplicate
+   variable is required. `GALLERY_DATABASE_URL` takes precedence if both are set.
    The database user must be able to create the `gallery_events` table. It is created
    automatically on first use. An existing `GALLERY_SESSION_SECRET` can be deleted.
 5. Deploy. Share the app URL and access password separately.

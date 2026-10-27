@@ -11,6 +11,7 @@ import os
 import secrets
 import time
 import sqlite3
+import logging
 import csv
 import io
 from contextlib import contextmanager
@@ -54,7 +55,7 @@ CATEGORIES = ('General', 'Unclear instructions', 'Technical error', 'Difficulty'
 
 @contextmanager
 def database():
-    url=os.environ.get('GALLERY_DATABASE_URL','')
+    url=os.environ.get('GALLERY_DATABASE_URL','').strip() or os.environ.get('DATABASE_URL','').strip()
     if url:
         import psycopg
         conn=psycopg.connect(url,connect_timeout=5)
@@ -73,6 +74,14 @@ def database():
         conn.rollback()
         raise
     finally:conn.close()
+
+def storage_error(exc):
+    # Log only diagnostic codes, never exception text (which can contain credentials).
+    state=getattr(exc,'sqlstate',None)
+    state=state if isinstance(state,str) and len(state)==5 and state.isalnum() else 'none'
+    logging.error('Gallery storage failure: type=%s sqlstate=%s postgres_configured=%s',
+                  type(exc).__name__,state,
+                  bool(os.environ.get('GALLERY_DATABASE_URL','').strip() or os.environ.get('DATABASE_URL','').strip()))
 
 def task_version(task):
     versioned=dict(task)
@@ -179,7 +188,9 @@ class handler(BaseHTTPRequestHandler):
                 except OSError:return self.send(503,page('Unavailable','<h1>The download is unavailable.</h1>',True))
                 visitor=visitor_id(self.headers.get('Cookie'))
                 try:record_event('download',task,visitor,{'name':name})
-                except Exception:return self.send(503,page('Download unavailable','<h1>Your download could not be registered.</h1><p>Please try again later.</p>',True))
+                except Exception as exc:
+                    storage_error(exc)
+                    return self.send(503,page('Download unavailable','<h1>Your download could not be registered.</h1><p>Please try again later.</p>',True))
                 return self.send(200,data,'application/zip',{'Content-Disposition':f'attachment; filename="task-{key}.zip"',
                     'Set-Cookie':self.secure_cookie(visitor,31536000).replace('gallery_session=','gallery_visitor=')})
             values={k:fields.get(k,[''])[0].strip() for k in ('name','category','feedback','version','feasible','difficulty','hardening_hours')}
@@ -200,7 +211,9 @@ class handler(BaseHTTPRequestHandler):
                 return self.send(409,page('Task changed','<h1>This task has changed. Copy your feedback, reload the task, and submit again.</h1>',True))
             visitor=visitor_id(self.headers.get('Cookie'))
             try:record_event('feedback',task,visitor,values)
-            except Exception:return self.send(503,page('Feedback unavailable','<h1>Feedback was not saved.</h1><p>Please keep a copy and try again later.</p>',True))
+            except Exception as exc:
+                storage_error(exc)
+                return self.send(503,page('Feedback unavailable','<h1>Feedback was not saved.</h1><p>Please keep a copy and try again later.</p>',True))
             cookie=self.secure_cookie(visitor,31536000).replace('gallery_session=','gallery_visitor=')
             return self.send(303,headers={'Location':'/task/'+key+'?feedback=saved#feedback','Set-Cookie':cookie})
         if self.path=='/logout':return self.send(303,headers={'Location':'/login','Set-Cookie':[self.secure_cookie('',0),self.secure_cookie('',0).replace('gallery_session=','gallery_admin=')]})
@@ -228,7 +241,9 @@ class handler(BaseHTTPRequestHandler):
             if not admin_authorized(self.headers.get('Cookie')):
                 return self.send(200,page('Admin','<section class="panel narrow"><h1>Review downloads and feedback</h1><form method="post" action="/admin/login">'+form_token()+'<label>Admin password<input type="password" name="password" required></label><button>Open review</button></form></section>',True))
             try:rows=event_rows()
-            except Exception:return self.send(503,page('Storage unavailable','<h1>Review storage is unavailable.</h1>',True))
+            except Exception as exc:
+                storage_error(exc)
+                return self.send(503,page('Storage unavailable','<h1>Review storage is unavailable.</h1>',True))
             if url.path.endswith('.json'):
                 return self.send(200,json.dumps(rows,ensure_ascii=False).encode(),'application/json',{'Content-Disposition':'attachment; filename="gallery-events.json"'})
             if url.path.endswith('.csv'):
@@ -290,7 +305,9 @@ class handler(BaseHTTPRequestHandler):
             if not downloads:body+='<p>No downloads registered yet.</p>'
             for name,created,version in downloads:
                 body+='<p><strong>'+esc(name)+'</strong> · '+esc(created[:10])+' · '+('current version' if version==task_version(task) else 'earlier version')+'</p>'
-        except Exception:body+='<p>Download history is temporarily unavailable.</p>'
+        except Exception as exc:
+            storage_error(exc)
+            body+='<p>Download history is temporarily unavailable.</p>'
         body+='</section>'
         body+='<section class="panel" id="feedback"><h2>Task feedback</h2><p>Paste your feedback to help improve future tasks. Your name is optional for feedback. Answers and pasted feedback are visible only to the gallery administrator. A browser ID links submissions from this browser.</p>'
         if parse_qs(url.query).get('feedback')==['saved']:body+='<p role="status">Thank you. Your feedback was saved.</p>'

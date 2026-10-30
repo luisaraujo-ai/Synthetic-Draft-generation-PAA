@@ -5,7 +5,7 @@ import json
 import tempfile
 import zipfile
 from pathlib import Path
-from publish_drive import plan, read, atomic
+from taskio import plan, read, atomic
 from pipeline_lock import coordinator_lock
 
 

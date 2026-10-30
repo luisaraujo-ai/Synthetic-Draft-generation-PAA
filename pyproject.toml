@@ -7,6 +7,3 @@ dependencies = ["anthropic>=1.0", "pydantic>=2"]
 
 [tool.uv]
 package = false
-
-[project.optional-dependencies]
-publish = ["google-auth[requests]>=2.38,<3"]

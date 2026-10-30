@@ -3,10 +3,8 @@ runs/
 __pycache__/
 uv.lock
 *.log
-.publish-drive.lock
 domains/*/.parallel.lock
 domains/*/ledger.json
-.google-credentials/
 .batch-novelty.lock
 .gallery-export.lock
 .vercel/
@@ -28,3 +26,20 @@ ws_tmp/
 # Local gallery activity database
 *.sqlite3
 *.sqlite3-*
+
+# Private/scratch material kept on disk
+.repo-backups/
+mechanical_tasks/
+forge-sme-kit/
+instruction.md
+tests/.dockerignore
+tests/Dockerfile
+tests/PROCEDURE_COMPLIANCE.md
+tests/freecad_smoke.py
+tests/freecadcmd
+tests/freecadpy
+tests/independent_grader.py
+tests/pytest.ini
+tests/reward_wiring.py
+tests/test.sh
+tests/test_outputs.py

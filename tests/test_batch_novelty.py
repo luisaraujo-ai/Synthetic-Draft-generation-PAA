@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 import batch_novelty
 from novelty import NoveltyReview
-from publish_drive import atomic, read
+from taskio import atomic, read
 from evidence import draft_digest
 
 class Batch(unittest.TestCase):

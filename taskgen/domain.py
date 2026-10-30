@@ -1,15 +1,12 @@
 """Domain configuration: domains/<name>/{domain.json, axes.json, trials.json, limitations.json, ledger.json}.
 
 Every stage reads its domain-specific text and lists from here, so adding aero or mechanical means adding a folder,
-not editing code. limitations.json is written by mine.py; ledger.json is written by run.py.
+not editing code. limitations.json is written by the miner (taskgen/mining); ledger.json by the pipeline coordinators.
 """
 import json
-from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-REPO = HERE.parent / 'forge-ee-verifiers-library'  # only mine.py reads past trials from here
-DOMAINS = HERE / 'domains'
-GUIDELINES = HERE / 'guidelines'
+from taskgen.paths import DOMAINS, GUIDELINES, ROOT
+
 CANARY = 'FAIR-FORGE-CANARY 3326b524-149d-466b-b660-7e68d982ee97'
 
 
@@ -40,7 +37,7 @@ class Domain:
 
     def limitations(self):
         if not self.limitations_file.exists():
-            raise SystemExit(f'no {self.limitations_file.relative_to(HERE)}: run `uv run mine.py --domain {self.name}` first')
+            raise SystemExit(f'no {self.limitations_file.relative_to(ROOT)}: run `uv run mine.py --domain {self.name}` first')
         return json.loads(self.limitations_file.read_text())
 
     def axes(self):

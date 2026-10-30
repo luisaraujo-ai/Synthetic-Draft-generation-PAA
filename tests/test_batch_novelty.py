@@ -2,10 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-import batch_novelty
-from novelty import NoveltyReview
-from taskio import atomic, read
-from evidence import draft_digest
+from taskgen.pipeline import batch_novelty
+from taskgen.review.novelty import NoveltyReview
+from taskgen.pipeline.storage import atomic, read_json as read
+from taskgen.pipeline.evidence import draft_digest
 
 class Batch(unittest.TestCase):
     def test_rank_order_manifest_and_cached_resume(self):

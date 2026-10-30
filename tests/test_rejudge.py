@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-import rejudge
+from taskgen.pipeline import rejudge
 from test_pipeline import draft, review
 
 

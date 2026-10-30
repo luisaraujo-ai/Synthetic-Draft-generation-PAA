@@ -1,19 +1,6 @@
-"""Shared JSON helpers and the publishable-task plan (Stage 1 + novelty gates) used by export_gallery and batch_novelty."""
-import json
-from pathlib import Path
-
-from evidence import draft_digest
-
-
-def read(path):
-    return json.loads(path.read_text())
-
-
-def atomic(path, value):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix('.tmp')
-    tmp.write_text(json.dumps(value, indent=2, ensure_ascii=False))
-    tmp.replace(path)
+"""The publishable-task plan: which reviewed tasks pass the Stage 1 and novelty gates, and the files and row each exports."""
+from taskgen.pipeline.evidence import draft_digest
+from taskgen.pipeline.storage import read_json as read
 
 
 def compact(text, limit=350):

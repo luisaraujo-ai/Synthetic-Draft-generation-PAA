@@ -17,8 +17,8 @@ from typing import List, Literal
 
 from pydantic import BaseModel, Field
 
-import llm
-from domain import guidelines
+from taskgen import llm
+from taskgen.domain import guidelines
 
 
 class Criterion(BaseModel):
@@ -188,7 +188,7 @@ def review(draft, limitation, models=(), effort=None, reasoning_tokens=None, che
                        'Keep each difficulty field below 150 words. Calibrate 0.5 as a strong agent passing '
                        'half its attempts within 2 hours and 400 turns with internet access.')
         fingerprint = hashlib.sha256(json.dumps({'system':system, 'prompt':prompt,
-            'model':llm.REVIEW_MODEL, 'effort':effort or llm.JUDGE_EFFORT,
+            'model':llm.settings.REVIEW_MODEL, 'effort':effort or llm.settings.JUDGE_EFFORT,
             'reasoning_tokens':reasoning_tokens, 'schema':schema.model_json_schema()}, sort_keys=True).encode()).hexdigest()
         checkpoint = Path(checkpoint_dir) / (stage + '.json') if checkpoint_dir else None
         cached = json.loads(checkpoint.read_text()) if checkpoint and checkpoint.exists() else None
@@ -198,7 +198,7 @@ def review(draft, limitation, models=(), effort=None, reasoning_tokens=None, che
         else:
             before = len(llm.LEDGER)
             result = llm.review_parse(system, prompt, schema, purpose='judge-' + stage,
-                                      effort=effort or llm.JUDGE_EFFORT, request_timeout_s=llm.JUDGE_TIMEOUT_S,
+                                      effort=effort or llm.settings.JUDGE_EFFORT, request_timeout_s=llm.settings.JUDGE_TIMEOUT_S,
                                       repairs=1, transport_retries=1, reasoning_tokens=reasoning_tokens,
                                       max_tokens=60000)
             expected = {n for n, _ in criteria}

@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 from urllib.parse import urlencode
-from evidence import draft_digest
-from export_gallery import export
-from taskio import atomic
+from taskgen.pipeline.evidence import draft_digest
+from taskgen.publishing.gallery import export
+from taskgen.pipeline.storage import atomic
 
 spec=importlib.util.spec_from_file_location('gallery',Path(__file__).resolve().parents[1]/'task-gallery/api/index.py')
 web=importlib.util.module_from_spec(spec);spec.loader.exec_module(web)

@@ -2,8 +2,8 @@
 import json
 from typing import Literal
 from pydantic import BaseModel, Field
-import llm
-from evidence import draft_digest
+from taskgen import llm
+from taskgen.pipeline.evidence import draft_digest
 
 
 EVIDENCE_RULES = """Evidence discipline for Stage 1:
@@ -72,7 +72,7 @@ def review_drafts(dirs, skill_file):
             json.dumps({'id': directory.name, 'domain': meta.get('domain'), 'subdomain': meta.get('subdomain'),
                         'draft': draft}, ensure_ascii=False), IdeaReview, purpose='stage1')
         record = dict(id=directory.name, title=draft['title'], draft_digest=draft_digest(draft),
-                      model=llm.REVIEW_MODEL, **result.model_dump())
+                      model=llm.settings.REVIEW_MODEL, **result.model_dump())
         if not result.design_decision:
             record['verdict'] = 'drop'
         if record['verdict'] == 'drop':

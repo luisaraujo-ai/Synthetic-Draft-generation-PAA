@@ -17,15 +17,25 @@ per candidate:
           └── structural lint problems, other judge failures, too easy: regenerate (--retries)
 ```
 
-| File | What it does |
+Code lives in the `taskgen/` package. The root `run.py`, `parallel_run.py`, `mine.py`, `rejudge.py`,
+`batch_novelty.py` and `export_gallery.py` are thin entry points that call `taskgen/cli/`; every command below works
+unchanged.
+
+| Module | What it does |
 |---|---|
-| `mine.py` | Reads hand-picked evaluated trials (`domains/<d>/trials.json`) and writes `limitations.json`. |
-| `sample.py` | Cell sampling (confidence-weighted, empty cells first, descriptors toward under-represented values) and the generator (`Draft` schema, prompts). |
-| `adapter.py` | Concept step (Claude Sonnet 5.5 by default, `TASKGEN_ADAPTER_MODEL`): cell -> task concept. |
-| `lint.py` | Mechanical rules (split into wording problems an edit call fixes and structural ones): word limits, no tools or benchmark words in the brief, no preference wording, every referenced file exists, SPICE files parse. |
-| `judge.py` | Split specification/difficulty review (MiMo by default), 60k tokens per stage. Mandatory defects block acceptance; secondary preferences and difficulty estimates are advisory. Completed stages can be checkpointed. |
-| `parallel_run.py` | Persistent parallel generation and judge queues, novelty checks, resume and centralized publishing. |
-| `run.py` | The serial loop and the outputs. `--skillcheck <run>` runs the SKILL.md stage 1 screen (`idea_review.py`) on a run's tasks. |
+| `taskgen/mining/miner.py` | Reads hand-picked evaluated trials (`domains/<d>/trials.json`) and writes `limitations.json`. |
+| `taskgen/generation/sampler.py` | Cell sampling (confidence-weighted, empty cells first, descriptors toward under-represented values). |
+| `taskgen/generation/schema.py`, `prompts.py`, `generator.py` | The `Draft` schema, the generator prompts, and the generation and wording-edit calls. |
+| `taskgen/generation/concepts.py` | Concept step (Claude Sonnet 5.5 by default, `TASKGEN_ADAPTER_MODEL`): cell -> task concept. |
+| `taskgen/generation/lint.py` | Mechanical rules (split into wording problems an edit call fixes and structural ones): word limits, no tools or benchmark words in the brief, no preference wording, every referenced file exists, SPICE files parse. |
+| `taskgen/review/judge.py` | Split specification/difficulty review (MiMo by default), 60k tokens per stage. Mandatory defects block acceptance; secondary preferences and difficulty estimates are advisory. Completed stages can be checkpointed. |
+| `taskgen/review/stage1.py`, `novelty.py` | The SKILL.md Stage 1 screen and the engineering-novelty check. |
+| `taskgen/pipeline/serial.py`, `steps.py`, `storage.py` | The serial candidate loop, steps shared with the parallel runner, and run-folder persistence. |
+| `taskgen/pipeline/parallel/` | Persistent parallel runner: `queue.py` (SQLite jobs and budget), `worker.py`, `transitions.py`, `outputs.py`, `coordinator.py`. |
+| `taskgen/pipeline/rejudge.py`, `batch_novelty.py` | Re-judge saved unjudged drafts; rank-first novelty selection across runs. |
+| `taskgen/publishing/` | `plan.py` (publishability gates) and `gallery.py` (export to the private gallery). |
+| `taskgen/llm/` | All model access: `settings.py` (TASKGEN_* overrides), Anthropic and OpenRouter clients, routing, cost ledger. |
+| `taskgen/cli/` | One `main()` per command. `run.py --skillcheck <run>` runs the Stage 1 screen on a run's tasks. |
 
 ## Run
 
@@ -156,7 +166,7 @@ not a passing reference claim. The batch novelty pass writes its selection as JS
 }
 ```
 
-Digests use `evidence.draft_digest(meta['draft'])`. A selected ID is a task folder basename. Alternatively a task's
+Digests use `taskgen.pipeline.evidence.draft_digest(meta['draft'])`. A selected ID is a task folder basename. Alternatively a task's
 `novelty.json` can contain `verdict: "distinct"` and the current `draft_digest`. Records without a digest require
 batch selection; the exporter does not manufacture novelty approval.
 

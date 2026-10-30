@@ -32,10 +32,12 @@ novelty checks and the gallery export read them.
 
 ## Pipeline map
 
-`mine.py` -> `sample.py` (+ `adapter.py` concept step) -> `lint.py` -> `judge.py` -> `run.py` (serial) or
-`parallel_run.py` (SQLite queue) -> `run.py --skillcheck` (Stage 1, `idea_review.py`, uses `SKILL.md`) ->
-`batch_novelty.py` -> `export_gallery.py` -> `task-gallery/` (Vercel app). `llm.py` is the only place that talks to
-models and the only place cost is tracked. `taskio.py` holds shared JSON helpers and the publishability gates.
+Code is the `taskgen/` package; the root scripts are thin entry points over `taskgen/cli/`.
+`mine.py` -> sampler + `concepts` + `generator` + `lint` (`taskgen/generation/`) -> `review/judge.py` -> `run.py`
+(serial) or `parallel_run.py` (SQLite queue, `taskgen/pipeline/parallel/`) -> `run.py --skillcheck` (Stage 1,
+`review/stage1.py`, uses `SKILL.md`) -> `batch_novelty.py` -> `export_gallery.py` -> `task-gallery/` (Vercel app).
+`taskgen/llm/` is the only place that talks to models and the only place cost is tracked.
+`pipeline/storage.py` and `publishing/plan.py` hold the shared JSON helpers and the publishability gates.
 
 ## State at handoff
 
@@ -62,12 +64,12 @@ few against a real solver model to check difficulty; widen the batch to see if S
 
 - **Do not run live generation or judge batches without sign-off.** Every call costs money. Budgets are local estimates,
   not billing guarantees. The parallel runner is not live-tested.
-- One coordinator writes `ledger.json`, `tasks/`, `summary.json`, `cost.json`, guarded by `pipeline_lock.py`
+- One coordinator writes `ledger.json`, `tasks/`, `summary.json`, `cost.json`, guarded by `taskgen/pipeline/locks.py`
   (macOS/Linux only). Never add a second writer. Never hand-edit or delete the ledger during a run.
 - Do not delete or rewrite old `runs/`.
-- New model calls must go through `llm.py` so cost stays correct. New lint messages need the `rule N:` / `output size:`
+- New model calls must go through `taskgen/llm/` so cost stays correct. New lint messages need the `rule N:` / `output size:`
   prefix so `lint.split()` routes them.
-- `llm.py` docstring and defaults disagree (docstring says Opus/kimi; code uses Sonnet 5.5 and MiMo). Trust the code.
-- `lint.validate_spice` silently skips if `ngspice` is not installed.
-- `domain.py` `REPO` points at a sibling `../forge-ee-verifiers-library` that may not exist; only `mine.py` uses it.
+- Model defaults live in `taskgen/llm/settings.py` (Sonnet 5.5 generator/concept/novelty, MiMo judge). Read them as `llm.settings.NAME`.
+- `generation/lint.validate_spice` silently skips if `ngspice` is not installed.
+- `taskgen/mining/miner.py` `REPO` points at a sibling `../forge-ee-verifiers-library` that may not exist; only the miner uses it.
 - Gallery secrets (`.env*`, passwords) are never committed. See [task-gallery/README.md](task-gallery/README.md).

@@ -8,8 +8,8 @@ from typing import List
 
 from pydantic import BaseModel, Field
 
-import llm
-from domain import guidelines
+from taskgen import llm
+from taskgen.domain import guidelines
 
 
 class Concept(BaseModel):
@@ -61,5 +61,5 @@ def adapt(domain, cell, avoid=()):
                  '\n'.join(f'- {a}' for a in avoid) + '\n') if avoid else ''
     return llm.review_parse(SYSTEM.format(discipline=domain['discipline'], guidelines=guidelines()),
                             PROMPT.format(cell=cell, avoid=avoid_txt, tools=domain['tools']), Concept,
-                            model=llm.ADAPTER_MODEL, effort='medium', max_tokens=llm.ADAPTER_MAX_TOKENS, repairs=1,
+                            model=llm.settings.ADAPTER_MODEL, effort='medium', max_tokens=llm.settings.ADAPTER_MAX_TOKENS, repairs=1,
                             transport_retries=0, request_timeout_s=240, purpose='adapter')

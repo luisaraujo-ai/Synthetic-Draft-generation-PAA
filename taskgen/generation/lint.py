@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from domain import CANARY
+from taskgen.domain import CANARY
 
 BENCHMARK = r'\b(benchmark|grader|grading|reward|sandbox|container|docker|AI agent|agent|run budget|this task|the task)\b'
 PREFERENCE = (r'\bas (low|high|small|large|fast|short|long|little|much|few|cheap|quiet) as (possible|you can)\b',

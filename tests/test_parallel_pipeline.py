@@ -4,10 +4,14 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-import judge
-import novelty
-import parallel_run as parallel
+from types import SimpleNamespace
+from taskgen.pipeline.parallel.outputs import catalog_for
+from taskgen.pipeline.parallel.queue import Queue
+from taskgen.pipeline.parallel.transitions import finish, next_attempt
+from taskgen.review import judge, novelty
 from test_pipeline import draft, review
+
+parallel = SimpleNamespace(Queue=Queue, finish=finish, next_attempt=next_attempt, catalog_for=catalog_for)
 
 
 CONFIG = dict(domain='electrical', retries=2, transport_retries=1)

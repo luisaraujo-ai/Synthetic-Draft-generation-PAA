@@ -8,13 +8,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import adapter
-import judge
-import lint
-import llm
-import run
-import sample
-from domain import Domain
+from taskgen import llm
+from taskgen.domain import Domain
+from taskgen.generation import concepts as adapter, lint
+from taskgen.generation.sampler import Sampler
+from taskgen.generation.schema import Draft, Edited
+from taskgen.pipeline import serial as run
+from taskgen.review import judge
 
 BRIEF = ('Our product team needs a buck stage. Input 12 V, output 3.3 V at 2 A. Output ripple must be at most 20 mV '
          'peak to peak at 1 MHz load steps of 0.5 A. Deliver the design as a SPICE netlist in /app/output/design.cir. '
@@ -32,7 +32,7 @@ def draft(**kw):
              distinct_valid_designs=['a', 'b', 'c'], reference_outline='x', catching_rows=['R1'], public_designs=[],
              mechanism_survival='x')
     d.update(kw)
-    return sample.Draft(**d)
+    return Draft(**d)
 
 
 def review(p, verdict='pass'):
@@ -46,7 +46,7 @@ class Loop(unittest.TestCase):
         self.domain = Domain('electrical')
         self.tmp = Path(tempfile.mkdtemp())
         self.args = types.SimpleNamespace(n=1, subdomain='power electronics', retries=2)
-        self.sampler = sample.Sampler(self.domain, 1)
+        self.sampler = Sampler(self.domain, 1)
         concept = adapter.Concept(device='d', use_context='u', function='f', operating_states=[], fixed_boundaries=[],
                                   open_decisions=[], where_limitation_bites='w', binding_tradeoff='b', inputs_needed=[],
                                   verification_sketch='v', why_not_public='n')
@@ -84,9 +84,9 @@ class Loop(unittest.TestCase):
         self.edit_calls = 0
 
         def stub(system, prompt, schema, model=None):
-            if schema is sample.Edited:
+            if schema is Edited:
                 self.edit_calls += 1
-                return sample.Edited(instruction_md=fixed_brief, handbook_md=handbook)
+                return Edited(instruction_md=fixed_brief, handbook_md=handbook)
             return self.drafts.pop(0)
         llm.generate_parse = stub
 
@@ -127,7 +127,7 @@ class Loop(unittest.TestCase):
         self.drafts = [draft()]
         self.edits(False)
         e = self.go()
-        self.assertEqual((e['status'], calls), ('unjudged', [llm.JUDGE_REASONING_TOKENS, llm.JUDGE_REASONING_TOKENS // 2]))
+        self.assertEqual((e['status'], calls), ('unjudged', [llm.settings.JUDGE_REASONING_TOKENS, llm.settings.JUDGE_REASONING_TOKENS // 2]))
 
     def test_non_text_judge_failure_regenerates(self):
         first = review(0.2)

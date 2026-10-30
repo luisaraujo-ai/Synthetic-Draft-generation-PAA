@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch
-import judge
+from taskgen.review import judge
 
 
 class SplitJudge(unittest.TestCase):

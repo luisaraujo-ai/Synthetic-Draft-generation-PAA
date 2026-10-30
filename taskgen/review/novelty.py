@@ -4,7 +4,7 @@ import re
 from collections import Counter
 from typing import Literal
 from pydantic import BaseModel, Field
-import llm
+from taskgen import llm
 
 
 class NoveltyReview(BaseModel):
@@ -48,7 +48,7 @@ def review(candidate, catalog, model=None):
         'Use duplicate only with concrete overlapping engineering evidence; use unclear when evidence is insufficient. '
         'Do not assess feasibility, difficulty or wording. Keep the response under 500 words.',
         json.dumps({'candidate': candidate, 'comparisons': nearest}, ensure_ascii=False), NoveltyReview,
-        model=model or llm.NOVELTY_MODEL, effort='medium', max_tokens=12000, request_timeout_s=240,
+        model=model or llm.settings.NOVELTY_MODEL, effort='medium', max_tokens=12000, request_timeout_s=240,
         transport_retries=0, repairs=1, purpose='novelty')
     known = {x['id'] for x in nearest}
     if set(result.matches) - known or (result.verdict == 'duplicate' and not result.matches):
